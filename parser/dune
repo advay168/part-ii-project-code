@@ -1,0 +1,5 @@
+(library
+ (name parser)
+ (preprocess
+  (pps ppx_jane))
+ (libraries base))
