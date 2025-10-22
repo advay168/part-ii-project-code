@@ -1,8 +1,15 @@
 open! Base
 
+let input () =
+  let argv = Sys.get_argv () in
+  String.strip
+    (if Array.length argv = 1 then Stdio.In_channel.input_line_exn Stdio.stdin
+     else Stdio.In_channel.read_all argv.(1))
+;;
+
 let () =
-  let filename = (Sys.get_argv ()).(1) in
-  let code = Stdio.In_channel.read_all filename in
-  let parsed = Parser.parse code in
-  Stdio.print_endline parsed
+  let code = input () in
+  let parsed_expr = Parser.parse code in
+  parsed_expr |> Parser.Ast.sexp_of_expr |> Sexp.to_string_hum |> Stdio.print_endline;
+  parsed_expr |> Parser.Pretty_print.pp |> Stdio.print_endline
 ;;

@@ -13,6 +13,8 @@
 
 (license LICENSE)
 
+(using menhir 3.0)
+
 (package
  (name part-ii-project-code)
  (synopsis "Part II project code")

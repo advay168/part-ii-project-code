@@ -1,3 +1,8 @@
+(menhir
+ (modules parser_generator))
+
+(ocamllex lexer)
+
 (library
  (name parser)
  (preprocess
