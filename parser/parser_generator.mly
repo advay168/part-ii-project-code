@@ -20,9 +20,9 @@ start:
   | e = expr; EOF { Some e }
 
 expr:  
-  | int = INT { MkInt int }
-  | e1 = expr; PLUS; e2 = expr { MkAdd (e1, e2) }
-  | e1 = expr; MULT; e2 = expr { MkMult (e1, e2) }
+  | int = INT { { loc = $loc; e = MkInt int} }
+  | e1 = expr; PLUS; e2 = expr {{ loc = $loc; e = MkAdd (e1, e2)}  }
+  | e1 = expr; MULT; e2 = expr {{ loc = $loc; e = MkMult (e1, e2)}  }
   | LPAREN; e = expr; RPAREN { e }
 
 (* expr:  *)

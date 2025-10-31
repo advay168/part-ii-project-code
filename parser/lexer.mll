@@ -26,5 +26,6 @@ rule read =
   | '(' { LPAREN }
   | ')' { RPAREN }
   | whitespace { read lexbuf }
+  | newline {  next_line lexbuf; read lexbuf }
   | eof { EOF }
   | _ { raise (SyntaxError ("Unexpected character: " ^ Lexing.lexeme lexbuf)) }
