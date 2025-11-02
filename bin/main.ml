@@ -5,7 +5,7 @@ let input () =
   let argv = Sys.get_argv () in
   let filename, code =
     if Array.length argv = 1 then
-      "stdio" , Stdio.In_channel.input_line_exn Stdio.stdin
+      ("stdio", Stdio.In_channel.input_line_exn Stdio.stdin)
     else (argv.(1), Stdio.In_channel.read_all argv.(1))
   in
   (filename, String.strip code)
