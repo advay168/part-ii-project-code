@@ -25,6 +25,16 @@ rule read =
   | '*' { MULT }
   | '(' { LPAREN }
   | ')' { RPAREN }
+  | "true" { BOOL true }
+  | "false" { BOOL false }
+  | "&&" { BAND }
+  | "||" { BOR }
+  | "~" { BNOT }
+  | '=' { EQUALS }
+  | "if" { IF }
+  | "then" { THEN }
+  | "else" { ELSE }
+  | "endif" { ENDIF }
   | whitespace { read lexbuf }
   | newline {  next_line lexbuf; read lexbuf }
   | eof { EOF }

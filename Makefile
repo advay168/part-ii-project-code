@@ -1,6 +1,6 @@
 DUNE = opam exec -- dune
 
-.PHONY: all build watch run nrun test clean fmt promote precommit
+.PHONY: all build watch run nrun repl test clean fmt promote precommit
 
 all: build
 
@@ -16,6 +16,9 @@ run:
 nrun:
 	$(DUNE) exec --no-print-directory --no-build bin/main.exe -- examples/calc.mll
 
+repl:
+	$(DUNE) exec --no-print-directory --no-build bin/main.exe
+
 test:
 	$(DUNE) runtest
 
@@ -29,4 +32,4 @@ promote:
 	$(DUNE) promote
 
 precommit: build test
-	$(DUNE) fmt --preview
+	$(DUNE) build @fmt
