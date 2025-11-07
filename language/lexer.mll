@@ -13,7 +13,10 @@ let next_line lexbuf =
 }
 let digit = ['0'-'9']
 
-let int = '-'? digit+  (* regex for integers *)
+let int = '-'? digit+
+let alpha = ['a'-'z' 'A'-'Z']
+
+let ident = alpha (alpha|digit)*
 
 let whitespace = [' ' '\t']+
 let newline = '\r' | '\n' | "\r\n"
@@ -35,6 +38,11 @@ rule read =
   | "then" { THEN }
   | "else" { ELSE }
   | "endif" { ENDIF }
+  | "let" { LET }
+  | ":=" { DEF_EQUALS }
+  | "in" { IN }
+  | "endlet" { ENDLET }
+  | ident { IDENT (Lexing.lexeme lexbuf) }
   | whitespace { read lexbuf }
   | newline {  next_line lexbuf; read lexbuf }
   | eof { EOF }

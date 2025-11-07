@@ -18,4 +18,6 @@ and expr' =
   | MkNot of expr
   | MkEqual of expr * expr
   | MkIf of expr * expr * expr
+  | MkVar of Var.t
+  | MkLet of Var.t * expr * expr
 [@@deriving sexp_of]

@@ -22,6 +22,10 @@ let () =
   |> Sexp.to_string_hum
   |> Stdio.print_endline;
   parsed_expr |> Language.Pretty_print.pp |> Stdio.print_endline;
-  let evaluated = Eval.eval parsed_expr in
-  Stdio.printf "Evaluated: %s" (Value.string_of_t evaluated)
+  try
+    let evaluated = Eval.eval (Store.empty, parsed_expr) in
+    Stdio.printf "Evaluated: %s" (Value.string_of_t evaluated)
+  with
+  | Eval.TypeError (msg, value) ->
+    Stdio.printf "TypeError: %s. Got %s" msg (Value.string_of_t value)
 ;;
