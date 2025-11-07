@@ -1,9 +1,12 @@
 open! Base
 
 let test_string str =
-  Parser.Ast.show_locs := false;
-  let parsed = Parser.parse ~filename:"test" str in
-  parsed |> Parser.Ast.sexp_of_expr |> Sexp.to_string_hum |> Stdio.print_string;
+  Language.Ast.show_locs := false;
+  let parsed = Language.Parser.parse ~filename:"test" str in
+  parsed
+  |> Language.Ast.sexp_of_expr
+  |> Sexp.to_string_hum
+  |> Stdio.print_string;
   Stdio.print_string " --> ";
   Interpreter.Eval.eval parsed
   |> Interpreter.Value.string_of_t
@@ -54,9 +57,9 @@ let%expect_test "Bool operation precedence" =
 ;;
 
 let%expect_test "Test location tracking" =
-  Parser.Ast.show_locs := true;
-  Parser.parse ~filename:"test" "1 + 12\n + 3"
-  |> Parser.Ast.sexp_of_expr
+  Language.Ast.show_locs := true;
+  Language.Parser.parse ~filename:"test" "1 + 12\n + 3"
+  |> Language.Ast.sexp_of_expr
   |> Sexp.to_string_hum
   |> Stdio.print_endline;
   [%expect

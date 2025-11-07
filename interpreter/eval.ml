@@ -15,9 +15,9 @@ let equal = function
   | _ -> failwith "Type mismatch"
 ;;
 
-let rec eval (expr : Parser.Ast.expr) : Value.t =
+let rec eval (expr : Language.Ast.expr) : Value.t =
   match expr.e with
-  | Parser.Ast.MkInt int -> VInt int
+  | MkInt int -> VInt int
   | MkAdd (expr1, expr2) -> VInt (as_int (eval expr1) + as_int (eval expr2))
   | MkMult (expr1, expr2) -> VInt (as_int (eval expr1) * as_int (eval expr2))
   | MkBool bool -> VBool bool

@@ -1,6 +1,6 @@
 (library
  (inline_tests)
  (name tests)
- (libraries base stdio parser interpreter)
+ (libraries base stdio language interpreter)
  (preprocess
   (pps ppx_jane)))

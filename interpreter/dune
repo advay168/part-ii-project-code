@@ -1,5 +1,5 @@
 (library
  (name interpreter)
- (libraries base parser)
+ (libraries base language)
  (preprocess
   (pps ppx_jane)))

@@ -12,6 +12,3 @@ let parse ~filename string =
   | exception Lexer.SyntaxError err ->
     raise (ParseError ("Lexing error: " ^ err))
 ;;
-
-module Ast = Ast
-module Pretty_print = Pretty_print

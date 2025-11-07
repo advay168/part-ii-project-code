@@ -3,4 +3,4 @@
  (name main)
  (preprocess
   (pps ppx_jane))
- (libraries base stdio parser interpreter))
+ (libraries base stdio language interpreter))
