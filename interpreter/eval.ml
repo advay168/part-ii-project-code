@@ -41,11 +41,22 @@ let rec eval (store, (expr : Language.Ast.expr)) : Value.t =
   | MkVar name -> Store.get name store |> Option.value_exn
   | MkLet (name, expr1, expr2) ->
     let value = eval (store, expr1) in
+    let value =
+      match value with
+      | VFun (var, expr, store) ->
+        (* Add binding to function value to allow recursion. *)
+        let rec f =
+          Value.VFun (var, expr, lazy (Store.set name f (force store)))
+        in
+        f
+      | v -> v
+    in
     let store' = Store.set name value store in
     eval (store', expr2)
-  | MkFun (name, expr) -> VFun (name, expr, store)
+  | MkFun (name, expr) -> VFun (name, expr, lazy store)
   | MkApply (expr1, expr2) ->
     let name, body, store' = as_func (eval (store, expr1)) in
+    let store' = force store' in
     let arg = eval (store, expr2) in
     eval (Store.set name arg store', body)
 ;;
