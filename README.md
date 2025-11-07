@@ -7,13 +7,19 @@
 ```bash
 $ opam install . --deps-only # install libraries
 
-$ opam exec -- dune build
+$ make build
 
-$ cat examples/calc.mll
-1 + 2 * 3 + 4
+$ make examples # simplified output:
+calc.mll:
+((((1) + ((12) * (3))) + (4)) + (if (true) then (5) else (6) endif))
+Evaluated: 46
 
-$ opam exec -- dune exec --no-print-directory bin/main.exe -- examples/calc.mll
-(MkAdd (MkAdd (MkInt 1) (MkMult (MkInt 2) (MkInt 3))) (MkInt 4))
+fact.mll:
+(let fact := (fun n -> (if ((n) = (0)) then (1) else ((n) * ((fact) @ ((n) + (-1)))) endif) endfun) in ((fact) @ (5)) endlet)
+Evaluated: 120
+
+$ make run
+> {Enter code here}
 ```
 
 ## Formatting instructions
