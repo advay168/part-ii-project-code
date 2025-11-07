@@ -16,6 +16,8 @@ let rec pp (expr : Ast.expr) =
      "if " ^ pp e1 ^ " then " ^ pp e2 ^ " else " ^ pp e3 ^ " endif"
    | MkVar name -> name
    | MkLet (name, e1, e2) ->
-     "let " ^ name ^ " := " ^ pp e1 ^ " in " ^ pp e2 ^ " endlet")
+     "let " ^ name ^ " := " ^ pp e1 ^ " in " ^ pp e2 ^ " endlet"
+   | MkFun (name, e) -> "fun " ^ name ^ " -> " ^ pp e ^ " endfun"
+   | MkApply (e1, e2) -> pp e1 ^ " @ " ^ pp e2)
   |> wrap
 ;;

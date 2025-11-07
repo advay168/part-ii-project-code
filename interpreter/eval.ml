@@ -12,6 +12,11 @@ let as_bool = function
   | v -> raise (TypeError ("expected bool", v))
 ;;
 
+let as_func = function
+  | Value.VFun (name, body, store) -> name, body, store
+  | v -> raise (TypeError ("expected func", v))
+;;
+
 let equal (v1, v2) = as_int v1 = as_int v2
 
 let rec eval (store, (expr : Language.Ast.expr)) : Value.t =
@@ -38,4 +43,9 @@ let rec eval (store, (expr : Language.Ast.expr)) : Value.t =
     let value = eval (store, expr1) in
     let store' = Store.set name value store in
     eval (store', expr2)
+  | MkFun (name, expr) -> VFun (name, expr, store)
+  | MkApply (expr1, expr2) ->
+    let name, body, store' = as_func (eval (store, expr1)) in
+    let arg = eval (store, expr2) in
+    eval (Store.set name arg store', body)
 ;;

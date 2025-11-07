@@ -42,6 +42,10 @@ rule read =
   | ":=" { DEF_EQUALS }
   | "in" { IN }
   | "endlet" { ENDLET }
+  | "fun" { FUN }
+  | "->" { ARROW }
+  | "endfun" { ENDFUN }
+  | "@" { APPLY }
   | ident { IDENT (Lexing.lexeme lexbuf) }
   | whitespace { read lexbuf }
   | newline {  next_line lexbuf; read lexbuf }

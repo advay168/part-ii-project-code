@@ -16,6 +16,8 @@
 %token <string> IDENT
 %token LET DEF_EQUALS IN ENDLET
 
+%token FUN ARROW ENDFUN APPLY
+
 %token EOF
 
 
@@ -26,6 +28,8 @@
 
 %left PLUS
 %left MULT
+
+%left APPLY
 
 %start <Ast.expr option> prog
 %%
@@ -47,3 +51,5 @@ expr:
   | IF; e1 = expr; THEN; e2 = expr; ELSE; e3 = expr; ENDIF { { loc = $loc; e = MkIf (e1, e2, e3)} }
   | name = IDENT { { loc = $loc; e = MkVar name} }
   | LET; name = IDENT; DEF_EQUALS; e1 = expr; IN; e2 = expr; ENDLET { { loc = $loc; e = MkLet (name, e1, e2)} }
+  | FUN; name = IDENT; ARROW; e = expr; ENDFUN { { loc = $loc; e = MkFun (name, e)} }
+  | e1 = expr; APPLY; e2 = expr { { loc = $loc; e = MkApply (e1, e2)} }
