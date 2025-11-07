@@ -2,7 +2,6 @@ open Base
 
 (* [annotated] is used to provide a custom sexpifier which is less verbose than
    that which would be generated. *)
-
 type 't annotated =
   { loc : Lexing.position * Lexing.position
   ; e : 't
@@ -35,4 +34,6 @@ and expr' =
   | MkNot of expr
   | MkEqual of expr * expr
   | MkIf of expr * expr * expr
+  | MkVar of Var.t
+  | MkLet of Var.t * expr * expr
 [@@deriving sexp_of]

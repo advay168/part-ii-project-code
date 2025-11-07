@@ -1,30 +1,41 @@
 open! Base
 
+exception TypeError of string * Value.t
+
 let as_int = function
   | Value.VInt int -> int
-  | _ -> failwith "Type mismatch"
+  | v -> raise (TypeError ("expected int", v))
 ;;
 
 let as_bool = function
   | Value.VBool bool -> bool
-  | _ -> failwith "Type mismatch"
+  | v -> raise (TypeError ("expected bool", v))
 ;;
 
-let equal = function
-  | Value.VInt value1, Value.VInt value2 -> Int.equal value1 value2
-  | _ -> failwith "Type mismatch"
-;;
+let equal (v1, v2) = as_int v1 = as_int v2
 
-let rec eval (expr : Language.Ast.expr) : Value.t =
+let rec eval (store, (expr : Language.Ast.expr)) : Value.t =
   match expr.e with
   | MkInt int -> VInt int
-  | MkAdd (expr1, expr2) -> VInt (as_int (eval expr1) + as_int (eval expr2))
-  | MkMult (expr1, expr2) -> VInt (as_int (eval expr1) * as_int (eval expr2))
+  | MkAdd (expr1, expr2) ->
+    VInt (as_int (eval (store, expr1)) + as_int (eval (store, expr2)))
+  | MkMult (expr1, expr2) ->
+    VInt (as_int (eval (store, expr1)) * as_int (eval (store, expr2)))
   | MkBool bool -> VBool bool
-  | MkAnd (expr1, expr2) -> VBool (as_bool (eval expr1) && as_bool (eval expr2))
-  | MkOr (expr1, expr2) -> VBool (as_bool (eval expr1) || as_bool (eval expr2))
-  | MkNot expr -> VBool (not (as_bool (eval expr)))
-  | MkEqual (expr1, expr2) -> VBool (equal (eval expr1, eval expr2))
+  | MkAnd (expr1, expr2) ->
+    VBool (as_bool (eval (store, expr1)) && as_bool (eval (store, expr2)))
+  | MkOr (expr1, expr2) ->
+    VBool (as_bool (eval (store, expr1)) || as_bool (eval (store, expr2)))
+  | MkNot expr -> VBool (not (as_bool (eval (store, expr))))
+  | MkEqual (expr1, expr2) ->
+    VBool (equal (eval (store, expr1), eval (store, expr2)))
   | MkIf (expr1, expr2, expr3) ->
-    if as_bool (eval expr1) then eval expr2 else eval expr3
+    if as_bool (eval (store, expr1))
+    then eval (store, expr2)
+    else eval (store, expr3)
+  | MkVar name -> Store.get name store |> Option.value_exn
+  | MkLet (name, expr1, expr2) ->
+    let value = eval (store, expr1) in
+    let store' = Store.set name value store in
+    eval (store', expr2)
 ;;

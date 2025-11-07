@@ -8,7 +8,7 @@ let test_string str =
   |> Sexp.to_string_hum
   |> Stdio.print_string;
   Stdio.print_string " --> ";
-  Interpreter.Eval.eval parsed
+  Interpreter.Eval.eval (Interpreter.Store.empty, parsed)
   |> Interpreter.Value.string_of_t
   |> Stdio.print_endline
 ;;
@@ -50,10 +50,9 @@ let%expect_test "Bool operation precedence" =
   [%expect "(MkAnd (MkNot (MkBool true)) (MkBool true)) --> false"];
   test_string "1 = 1 && true";
   [%expect {| (MkAnd (MkEqual (MkInt 1) (MkInt 1)) (MkBool true)) --> true |}];
-  try test_string "~1 = 1" with
-  | Failure _ ->
-    ();
-    [%expect {| (MkEqual (MkNot (MkInt 1)) (MkInt 1)) --> |}]
+  (try test_string "~1 = 1" with
+   | Interpreter.Eval.TypeError _ -> ());
+  [%expect {| (MkEqual (MkNot (MkInt 1)) (MkInt 1)) --> |}]
 ;;
 
 let%expect_test "Test location tracking" =

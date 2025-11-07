@@ -13,12 +13,16 @@
 
 %token LPAREN RPAREN
 
+%token <string> IDENT
+%token LET DEF_EQUALS IN ENDLET
+
 %token EOF
+
 
 %left BOR
 %left BAND
 %left EQUALS
-%nonassoc  BNOT
+%nonassoc BNOT
 
 %left PLUS
 %left MULT
@@ -41,15 +45,5 @@ expr:
   | BNOT; e = expr { {loc = $loc; e = MkNot e} }
   | e1 = expr; EQUALS; e2 = expr {{ loc = $loc; e = MkEqual (e1, e2)}  }
   | IF; e1 = expr; THEN; e2 = expr; ELSE; e3 = expr; ENDIF { { loc = $loc; e = MkIf (e1, e2, e3)} }
-
-(* expr:  *)
-(*   | t = term { t } *)
-(*   | t1 = expr; PLUS; t2 = term {MkAdd (t1, t2)} ; *)
-(**)
-(* term: *)
-(*   | f = factor { f } *)
-(*   | f1 = term; MULT; f2 = factor {MkMult (f1, f2)} ; *)
-(**)
-(* factor: *)
-(*   | i = INT {MkInt i} ; *)
-(**)
+  | name = IDENT { { loc = $loc; e = MkVar name} }
+  | LET; name = IDENT; DEF_EQUALS; e1 = expr; IN; e2 = expr; ENDLET { { loc = $loc; e = MkLet (name, e1, e2)} }
