@@ -20,4 +20,6 @@ and expr' =
   | MkIf of expr * expr * expr
   | MkVar of Var.t
   | MkLet of Var.t * expr * expr
+  | MkFun of Var.t * expr
+  | MkApply of expr * expr
 [@@deriving sexp_of]
