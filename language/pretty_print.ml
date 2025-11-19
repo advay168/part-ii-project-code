@@ -4,7 +4,7 @@ let wrap s = "(" ^ s ^ ")"
 
 let rec pp (expr : Ast.expr) =
   (match expr.e with
-   | Ast.MkInt int -> Int.to_string int
+   | MkInt int -> Int.to_string int
    | MkAdd (e1, e2) -> pp e1 ^ " + " ^ pp e2
    | MkMult (e1, e2) -> pp e1 ^ " * " ^ pp e2
    | MkBool bool -> Bool.to_string bool
@@ -18,6 +18,9 @@ let rec pp (expr : Ast.expr) =
    | MkLet (name, e1, e2) ->
      "let " ^ name ^ " := " ^ pp e1 ^ " in " ^ pp e2 ^ " endlet"
    | MkFun (name, e) -> "fun " ^ name ^ " -> " ^ pp e ^ " endfun"
-   | MkApply (e1, e2) -> pp e1 ^ " @ " ^ pp e2)
+   | MkApply (e1, e2) -> pp e1 ^ " @ " ^ pp e2
+   | MkRaise e -> "raise ( " ^ pp e ^ " )"
+   | MkTry (e1, name, e2) ->
+     "try " ^ pp e1 ^ " with " ^ name ^ " -> " ^ pp e2 ^ " endtry")
   |> wrap
 ;;

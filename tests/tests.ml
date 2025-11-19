@@ -55,6 +55,90 @@ let%expect_test "Bool operation precedence" =
   [%expect {| (MkEqual (MkNot (MkInt 1)) (MkInt 1)) --> |}]
 ;;
 
+let%expect_test "Let binds" =
+  test_string "let x := 123 in x + 1 endlet";
+  [%expect "(MkLet x (MkInt 123) (MkAdd (MkVar x) (MkInt 1))) --> 124"];
+  test_string "let x := 123 in let y := 456 in x endlet endlet";
+  [%expect "(MkLet x (MkInt 123) (MkLet y (MkInt 456) (MkVar x))) --> 123"];
+  test_string "let x := 123 in let y := 456 in y endlet endlet";
+  [%expect "(MkLet x (MkInt 123) (MkLet y (MkInt 456) (MkVar y))) --> 456"];
+  test_string "let x := 123 in let x := 456 in x endlet endlet";
+  [%expect "(MkLet x (MkInt 123) (MkLet x (MkInt 456) (MkVar x))) --> 456"];
+  (try test_string "x" with
+   | Interpreter.Eval.UnboundVarError _ -> ());
+  [%expect {| (MkVar x) --> |}];
+  (try test_string "let x := x in x endlet" with
+   | Interpreter.Eval.UnboundVarError _ -> ());
+  [%expect {| (MkLet x (MkVar x) (MkVar x)) --> |}]
+;;
+
+let%expect_test "Functions" =
+  test_string "let f := fun x -> x + 1 endfun in f endlet";
+  [%expect
+    {| (MkLet f (MkFun x (MkAdd (MkVar x) (MkInt 1))) (MkVar f)) --> <fun> |}];
+  test_string "let f := fun x -> x + 1 endfun in f@123 endlet";
+  [%expect
+    {|
+    (MkLet f (MkFun x (MkAdd (MkVar x) (MkInt 1)))
+     (MkApply (MkVar f) (MkInt 123))) --> 124
+    |}];
+  test_string "let f := fun f -> f endfun in f endlet";
+  [%expect {| (MkLet f (MkFun f (MkVar f)) (MkVar f)) --> <fun> |}];
+  test_string
+    {|
+      let fact := fun x ->
+        if x = 0 then 1 else x * fact@(x+-1) endif
+      endfun in
+      fact@5
+      endlet
+    |};
+  [%expect
+    {|
+    (MkLet fact
+     (MkFun x
+      (MkIf (MkEqual (MkVar x) (MkInt 0)) (MkInt 1)
+       (MkMult (MkVar x) (MkApply (MkVar fact) (MkAdd (MkVar x) (MkInt -1))))))
+     (MkApply (MkVar fact) (MkInt 5))) --> 120
+    |}];
+  test_string
+    {|
+      let addn := fun x -> fun y -> x+y endfun endfun in
+      let add5 := addn@5 in
+      let add6 := addn@6 in
+      add5@10 + add6@20
+      endlet
+      endlet
+      endlet
+    |};
+  [%expect
+    {|
+    (MkLet addn (MkFun x (MkFun y (MkAdd (MkVar x) (MkVar y))))
+     (MkLet add5 (MkApply (MkVar addn) (MkInt 5))
+      (MkLet add6 (MkApply (MkVar addn) (MkInt 6))
+       (MkAdd (MkApply (MkVar add5) (MkInt 10))
+        (MkApply (MkVar add6) (MkInt 20)))))) --> 41
+    |}]
+;;
+
+let%expect_test "Exceptions" =
+  test_string "try 456 with exn -> 123 endtry";
+  [%expect "(MkTry (MkInt 456) exn (MkInt 123)) --> 456"];
+  test_string "try raise (456) with exn -> 123 endtry";
+  [%expect "(MkTry (MkRaise (MkInt 456)) exn (MkInt 123)) --> 123"];
+  test_string "try raise (456) with exn -> exn endtry";
+  [%expect "(MkTry (MkRaise (MkInt 456)) exn (MkVar exn)) --> 456"];
+  test_string "try 1 + raise (456) with exn -> exn endtry";
+  [%expect
+    "(MkTry (MkAdd (MkInt 1) (MkRaise (MkInt 456))) exn (MkVar exn)) --> 456"];
+  (try test_string "raise (123)" with
+   | Interpreter.Eval.LangException _ -> ());
+  [%expect {| (MkRaise (MkInt 123)) --> |}];
+  (try test_string "try 1 + raise (456) with exn -> raise (123) endtry" with
+   | Interpreter.Eval.LangException _ -> ());
+  [%expect
+    {| (MkTry (MkAdd (MkInt 1) (MkRaise (MkInt 456))) exn (MkRaise (MkInt 123))) --> |}]
+;;
+
 let%expect_test "Test location tracking" =
   Language.Ast.show_locs := true;
   Language.Parser.parse ~filename:"test" "1 + 12\n + 3"

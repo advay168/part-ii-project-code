@@ -46,6 +46,10 @@ rule read =
   | "->" { ARROW }
   | "endfun" { ENDFUN }
   | "@" { APPLY }
+  | "raise" { RAISE }
+  | "try" { TRY }
+  | "with" { WITH }
+  | "endtry" { ENDTRY }
   | ident { IDENT (Lexing.lexeme lexbuf) }
   | whitespace { read lexbuf }
   | newline {  next_line lexbuf; read lexbuf }
