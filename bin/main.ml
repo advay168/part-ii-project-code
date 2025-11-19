@@ -24,8 +24,10 @@ let () =
   parsed_expr |> Language.Pretty_print.pp |> Stdio.print_endline;
   try
     let evaluated = Eval.eval (Store.empty, parsed_expr) in
-    Stdio.printf "Evaluated: %s" (Value.string_of_t evaluated)
+    Stdio.printf "Evaluated: %s\n" (Value.string_of_t evaluated)
   with
   | Eval.TypeError (msg, value) ->
-    Stdio.printf "TypeError: %s. Got %s" msg (Value.string_of_t value)
+    Stdio.printf "TypeError: Expected value of type `%s` but got `%s`.\n" msg (Value.string_of_t value)
+  | Eval.LangException (value) ->
+    Stdio.printf "Unhandled exception while evaluating program: `%s`\n" (Value.string_of_t value)
 ;;
