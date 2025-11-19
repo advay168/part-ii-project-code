@@ -27,7 +27,12 @@ let () =
     Stdio.printf "Evaluated: %s\n" (Value.string_of_t evaluated)
   with
   | Eval.TypeError (msg, value) ->
-    Stdio.printf "TypeError: Expected value of type `%s` but got `%s`.\n" msg (Value.string_of_t value)
-  | Eval.LangException (value) ->
-    Stdio.printf "Unhandled exception while evaluating program: `%s`\n" (Value.string_of_t value)
+    Stdio.printf
+      "TypeError: Expected value of type `%s` but got `%s`.\n"
+      msg
+      (Value.string_of_t value)
+  | Eval.LangException value ->
+    Stdio.printf
+      "Unhandled exception while evaluating program: `%s`\n"
+      (Value.string_of_t value)
 ;;
