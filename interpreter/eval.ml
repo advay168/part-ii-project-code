@@ -1,7 +1,7 @@
 open! Base
 
 exception TypeError of string * Value.t
-exception UnboundVarError of string * Value.t Store.t
+exception UnboundVarError of string * Value.t Env.t
 exception LangException of Value.t
 
 let as_int = function
@@ -15,53 +15,58 @@ let as_bool = function
 ;;
 
 let as_func = function
-  | Value.VFun (name, body, store) -> name, body, store
+  | Value.VFun (name, body, env) -> name, body, env
   | v -> raise (TypeError ("func", v))
 ;;
 
-let equal (v1, v2) = as_int v1 = as_int v2
+let perform_bin_op (v1, (op : Language.Ast.binOp), v2) : Value.t =
+  match op with
+  | IAdd -> VInt (as_int v1 + as_int v2)
+  | IMul -> VInt (as_int v1 * as_int v2)
+  | IEql -> VBool (as_int v1 = as_int v2)
+  | BAnd -> VBool (as_bool v1 && as_bool v2)
+  | BOr -> VBool (as_bool v1 || as_bool v2)
+;;
 
-let rec eval (store, (expr : Language.Ast.expr)) : Value.t =
-  match expr.e with
-  | MkInt int -> VInt int
-  | MkAdd (expr1, expr2) ->
-    VInt (as_int (eval (store, expr1)) + as_int (eval (store, expr2)))
-  | MkMult (expr1, expr2) ->
-    VInt (as_int (eval (store, expr1)) * as_int (eval (store, expr2)))
-  | MkBool bool -> VBool bool
-  | MkAnd (expr1, expr2) ->
-    VBool (as_bool (eval (store, expr1)) && as_bool (eval (store, expr2)))
-  | MkOr (expr1, expr2) ->
-    VBool (as_bool (eval (store, expr1)) || as_bool (eval (store, expr2)))
-  | MkNot expr -> VBool (not (as_bool (eval (store, expr))))
-  | MkEqual (expr1, expr2) ->
-    VBool (equal (eval (store, expr1), eval (store, expr2)))
-  | MkIf (cond, exprTrue, exprFalse) ->
-    if as_bool (eval (store, cond))
-    then eval (store, exprTrue)
-    else eval (store, exprFalse)
-  | MkVar name ->
-    (match Store.get name store with
-     | Some x -> x
-     | None -> raise (UnboundVarError (name, store)))
-  | MkLet (name, expr1, expr2) ->
-    let value =
-      match expr1.e with
-      | MkFun (var, body) ->
-        let rec f = Value.VFun (var, body, lazy (Store.set name f store)) in
-        f
-      | _ -> eval (store, expr1)
-    in
-    let store' = Store.set name value store in
-    eval (store', expr2)
-  | MkFun (name, body) -> VFun (name, body, lazy store)
-  | MkApply (exprFn, exprArg) ->
-    let name, body, store' = as_func (eval (store, exprFn)) in
-    let store' = force store' in
-    let arg = eval (store, exprArg) in
-    eval (Store.set name arg store', body)
-  | MkRaise expr -> raise (LangException (eval (store, expr)))
-  | MkTry (body, name, handler) ->
-    (try eval (store, body) with
-     | LangException exn -> eval (Store.set name exn store, handler))
+let lookup name env =
+  match Env.get name env with
+  | Some v -> v
+  | None -> raise (UnboundVarError (name, env))
+;;
+
+let eval expr =
+  let rec eval (env, (expr : Language.Ast.expr)) : Value.t =
+    match expr.e with
+    | MkInt int -> VInt int
+    | MkBinOp (expr1, op, expr2) ->
+      perform_bin_op (eval (env, expr1), op, eval (env, expr2))
+    | MkBool bool -> VBool bool
+    | MkNot expr -> VBool (not (as_bool (eval (env, expr))))
+    | MkIf (cond, exprTrue, exprFalse) ->
+      if as_bool (eval (env, cond))
+      then eval (env, exprTrue)
+      else eval (env, exprFalse)
+    | MkVar name -> lookup name env
+    | MkLet (name, expr1, expr2) ->
+      let value =
+        match expr1.e with
+        | MkFun (var, body) ->
+          let rec f = Value.VFun (var, body, lazy (Env.set name f env)) in
+          f
+        | _ -> eval (env, expr1)
+      in
+      let env' = Env.set name value env in
+      eval (env', expr2)
+    | MkFun (name, body) -> VFun (name, body, lazy env)
+    | MkApply (exprFn, exprArg) ->
+      let name, body, env' = as_func (eval (env, exprFn)) in
+      let env' = force env' in
+      let arg = eval (env, exprArg) in
+      eval (Env.set name arg env', body)
+    | MkRaise expr -> raise (LangException (eval (env, expr)))
+    | MkTry (body, name, handler) ->
+      (try eval (env, body) with
+       | LangException exn -> eval (Env.set name exn env, handler))
+  in
+  eval (Env.empty, expr)
 ;;

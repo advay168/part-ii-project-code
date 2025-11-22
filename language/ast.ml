@@ -22,17 +22,21 @@ let sexp_of_annotated sexp_of_t { loc = startpos, endpos; e } =
   | Atom _ -> assert false
 ;;
 
+type binOp =
+  | IAdd
+  | IMul
+  | IEql
+  | BAnd
+  | BOr
+[@@deriving sexp_of]
+
 type expr = expr' annotated
 
 and expr' =
   | MkInt of int
-  | MkAdd of expr * expr
-  | MkMult of expr * expr
+  | MkBinOp of expr * binOp * expr
   | MkBool of bool
-  | MkAnd of expr * expr
-  | MkOr of expr * expr
   | MkNot of expr
-  | MkEqual of expr * expr
   | MkIf of expr * expr * expr
   | MkVar of Var.t
   | MkLet of Var.t * expr * expr

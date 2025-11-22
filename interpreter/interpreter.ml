@@ -1,3 +1,3 @@
 module Eval = Eval
 module Value = Value
-module Store = Store
+module Env = Env
