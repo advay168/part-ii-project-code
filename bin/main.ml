@@ -23,7 +23,7 @@ let () =
   |> Stdio.print_endline;
   parsed_expr |> Language.Pretty_print.pp |> Stdio.print_endline;
   try
-    let evaluated = Eval.eval parsed_expr in
+    let evaluated = Eval.cek_eval parsed_expr in
     Stdio.printf "Evaluated: %s\n" (Value.string_of_t evaluated)
   with
   | Eval.TypeError (msg, value) ->
