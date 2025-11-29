@@ -1,5 +1,6 @@
 (* Controls whether the source location is present when converting to sexp. *)
 val show_locs : bool ref
+val without_showing_locs : (unit -> 'a) -> 'a
 
 type 't annotated =
   { loc : Lexing.position * Lexing.position
@@ -12,6 +13,7 @@ type binOp =
   | IEql
   | BAnd
   | BOr
+[@@deriving sexp_of]
 
 type expr = expr' annotated
 
