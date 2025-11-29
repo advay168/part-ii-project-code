@@ -9,6 +9,14 @@ type 't annotated =
 
 let show_locs = ref true
 
+let without_showing_locs f =
+  let s = !show_locs in
+  show_locs := false;
+  let x = f () in
+  show_locs := s;
+  x
+;;
+
 let sexp_of_annotated sexp_of_t { loc = startpos, endpos; e } =
   let loc_sexp =
     let sl, sc = startpos.pos_lnum, startpos.pos_cnum - startpos.pos_bol + 1 in

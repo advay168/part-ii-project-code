@@ -19,7 +19,7 @@
  (name part-ii-project-code)
  (synopsis "Part II project code")
  (description "Cambridge Computer Science Tripos Part II Project")
- (depends ocaml base menhir ppx_jane)
+ (depends ocaml base cmdliner menhir ppx_jane)
  )
 
 ; See the complete stanza docs at https://dune.readthedocs.io/en/stable/reference/dune-project/index.html

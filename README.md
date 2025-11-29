@@ -20,6 +20,9 @@ Evaluated: 120
 
 $ make run
 > {Enter code here}
+
+$ make debug
+> {Enter code here to run it under the debugger}
 ```
 
 ## Formatting instructions

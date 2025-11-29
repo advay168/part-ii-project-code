@@ -8,7 +8,7 @@ let test_string str =
   |> Sexp.to_string_hum
   |> Stdio.print_string;
   Stdio.print_string " --> ";
-  Interpreter.Eval.cek_eval parsed
+  Interpreter.Eval.cek_eval ~debug:false parsed
   |> Interpreter.Value.string_of_t
   |> Stdio.print_endline
 ;;

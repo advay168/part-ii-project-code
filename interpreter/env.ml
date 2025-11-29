@@ -2,6 +2,14 @@ open! Base
 
 type 'value t = (Language.Var.t * 'value) list
 
+let string_of_t string_of_value (env : 'value t) =
+  let members =
+    List.map ~f:(fun (var, value) -> var ^ ": " ^ string_of_value value) env
+    |> String.concat ~sep:", "
+  in
+  "{" ^ members ^ "}"
+;;
+
 let empty = []
 
 let get name lst =

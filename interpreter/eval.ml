@@ -1,6 +1,39 @@
 open! Base
 open Language
 
+let repeat s n = String.concat (List.init n ~f:(Fn.const s))
+
+let print_table ~header ~stringify lst =
+  let rows = List.map ~f:stringify lst in
+  let l1, l2, l3 =
+    let cs, es, ks = List.unzip3 (header :: rows) in
+    let max_length cells =
+      cells
+      |> List.map ~f:String.length
+      |> List.max_elt ~compare
+      |> Option.value_exn
+    in
+    max_length cs, max_length es, max_length ks
+  in
+  let print_seps left mid right =
+    Stdio.print_endline
+      (left
+       ^ String.concat
+           ~sep:mid
+           (List.map ~f:(fun l -> repeat "─" (l + 2)) [ l1; l2; l3 ])
+       ^ right)
+  in
+  let print_row =
+    fun (c, e, k) ->
+    Stdlib.Printf.printf "│ %-*s │ %-*s │ %-*s │\n" l1 c l2 e l3 k
+  in
+  print_seps "┌" "┬" "┐";
+  print_row header;
+  print_seps "├" "┼" "┤";
+  List.iter ~f:print_row rows;
+  print_seps "└" "┴" "┘"
+;;
+
 exception TypeError of string * Value.t
 exception UnboundVarError of string * Value.t Env.t
 exception LangException of Value.t
@@ -38,12 +71,28 @@ let lookup name env =
 module CEK = struct
   type env = Value.t Env.t
 
+  let string_of_env = Env.string_of_t Value.string_of_t
+  let sexp_of_env env = env |> string_of_env |> Sexp.Atom
+
   type expr_or_val =
     | Expr of Ast.expr
     | Value of Value.t
+  [@@deriving sexp_of]
+
+  let string_of_expr_or_val = function
+    | Expr expr -> Pretty_print.pp expr
+    | Value value -> Value.string_of_t value
+  ;;
 
   (** Solely for readability to denote where the continuation expects a hole.  *)
-  type hole = Hole
+  type hole = Hole [@@deriving sexp_of]
+
+  (** Override [Var] printing to make it easier to read in debugging. *)
+  module Var = struct
+    include Var
+
+    let sexp_of_t t = Sexp.Atom ("'" ^ t ^ "'")
+  end
 
   type continuation =
     | CNot of hole
@@ -56,6 +105,7 @@ module CEK = struct
     | CApply2 of Value.t * hole
     | CRaise of hole
     | CHandler of Var.t * Ast.expr * env
+  [@@deriving sexp_of]
 
   type t =
     { c : expr_or_val
@@ -142,13 +192,33 @@ module CEK = struct
     | Expr { e; loc = _ } -> translate_expr e
   ;;
 
-  let eval expr =
-    let rec driver (state : t) =
+  let eval ~debug expr =
+    let rec driver ~history (state : t) =
+      let history = state :: history in
       match state with
-      | { c = Value v; e = _; k = [] } -> v
-      | _ -> driver (step state)
+      | { c = Value v; e = _; k = [] } -> v, history
+      | _ -> driver ~history (step state)
     in
-    driver { c = Expr expr; e = Env.empty; k = [] }
+    let evaluated_value, history =
+      driver ~history:[] { c = Expr expr; e = Env.empty; k = [] }
+    in
+    let history = List.rev history in
+    if debug
+    then
+      Language.Ast.without_showing_locs (fun () ->
+        let stringify_k k =
+          "["
+          ^ (k
+             |> List.map ~f:(fun cont ->
+               cont |> sexp_of_continuation |> Sexp.to_string_hum)
+             |> String.concat ~sep:", ")
+          ^ "]"
+        in
+        let stringify { c; e; k } =
+          string_of_expr_or_val c, string_of_env e, stringify_k k
+        in
+        print_table ~header:("C", "E", "K") ~stringify history);
+    evaluated_value
   ;;
 end
 

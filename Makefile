@@ -11,15 +11,14 @@ watch:
 	$(DUNE) build --watch
 
 run:
-	$(DUNE) exec --no-print-directory --no-build bin/main.exe
+	$(DUNE) exec --no-print-directory --no-build bin/main.exe -- eval
+
+debug:
+	$(DUNE) exec --no-print-directory --no-build bin/main.exe -- debug
 
 examples:
-	$(DUNE) exec --no-print-directory bin/main.exe -- examples/calc.mll
-	$(DUNE) exec --no-print-directory bin/main.exe -- examples/fact.mll
-
-nexamples:
-	$(DUNE) exec --no-print-directory --no-build bin/main.exe -- examples/calc.mll
-	$(DUNE) exec --no-print-directory --no-build bin/main.exe -- examples/fact.mll
+	$(DUNE) exec --no-print-directory bin/main.exe -- eval examples/calc.mll
+	$(DUNE) exec --no-print-directory bin/main.exe -- eval examples/fact.mll
 
 test:
 	$(DUNE) runtest
