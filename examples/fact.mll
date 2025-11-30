@@ -3,9 +3,9 @@ let fact := fun n ->
   then 1
   else
     n * (fact@(n+-1))
-  endif
-  endfun
+  end
+  end
 in
   fact@5
-endlet
+end
 

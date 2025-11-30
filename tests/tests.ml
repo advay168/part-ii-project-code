@@ -36,9 +36,9 @@ let%expect_test "Test bools" =
   [%expect "(MkBinOp (MkBool true) BOr (MkBool false)) --> true"];
   test_string "~true";
   [%expect "(MkNot (MkBool true)) --> false"];
-  test_string "if true then 1 else 2 endif";
+  test_string "if true then 1 else 2 end";
   [%expect "(MkIf (MkBool true) (MkInt 1) (MkInt 2)) --> 1"];
-  test_string "if false then 1 else 2 endif";
+  test_string "if false then 1 else 2 end";
   [%expect "(MkIf (MkBool false) (MkInt 1) (MkInt 2)) --> 2"]
 ;;
 
@@ -66,41 +66,41 @@ let%expect_test "Bool operation precedence" =
 ;;
 
 let%expect_test "Let binds" =
-  test_string "let x := 123 in x + 1 endlet";
+  test_string "let x := 123 in x + 1 end";
   [%expect "(MkLet x (MkInt 123) (MkBinOp (MkVar x) IAdd (MkInt 1))) --> 124"];
-  test_string "let x := 123 in let y := 456 in x endlet endlet";
+  test_string "let x := 123 in let y := 456 in x end end";
   [%expect "(MkLet x (MkInt 123) (MkLet y (MkInt 456) (MkVar x))) --> 123"];
-  test_string "let x := 123 in let y := 456 in y endlet endlet";
+  test_string "let x := 123 in let y := 456 in y end end";
   [%expect "(MkLet x (MkInt 123) (MkLet y (MkInt 456) (MkVar y))) --> 456"];
-  test_string "let x := 123 in let x := 456 in x endlet endlet";
+  test_string "let x := 123 in let x := 456 in x end end";
   [%expect "(MkLet x (MkInt 123) (MkLet x (MkInt 456) (MkVar x))) --> 456"];
   (try test_string "x" with
    | Interpreter.Eval.UnboundVarError _ -> ());
   [%expect {| (MkVar x) --> |}];
-  (try test_string "let x := x in x endlet" with
+  (try test_string "let x := x in x end" with
    | Interpreter.Eval.UnboundVarError _ -> ());
   [%expect {| (MkLet x (MkVar x) (MkVar x)) --> |}]
 ;;
 
 let%expect_test "Functions" =
-  test_string "let f := fun x -> x + 1 endfun in f endlet";
+  test_string "let f := fun x -> x + 1 end in f end";
   [%expect
     {| (MkLet f (MkFun x (MkBinOp (MkVar x) IAdd (MkInt 1))) (MkVar f)) --> <fun> |}];
-  test_string "let f := fun x -> x + 1 endfun in f@123 endlet";
+  test_string "let f := fun x -> x + 1 end in f@123 end";
   [%expect
     {|
     (MkLet f (MkFun x (MkBinOp (MkVar x) IAdd (MkInt 1)))
      (MkApply (MkVar f) (MkInt 123))) --> 124
     |}];
-  test_string "let f := fun f -> f endfun in f endlet";
+  test_string "let f := fun f -> f end in f end";
   [%expect {| (MkLet f (MkFun f (MkVar f)) (MkVar f)) --> <fun> |}];
   test_string
     {|
       let fact := fun x ->
-        if x = 0 then 1 else x * fact@(x+-1) endif
-      endfun in
+        if x = 0 then 1 else x * fact@(x+-1) end
+      end in
       fact@5
-      endlet
+      end
     |};
   [%expect
     {|
@@ -113,13 +113,13 @@ let%expect_test "Functions" =
     |}];
   test_string
     {|
-      let addn := fun x -> fun y -> x+y endfun endfun in
+      let addn := fun x -> fun y -> x+y end end in
       let add5 := addn@5 in
       let add6 := addn@6 in
       add5@10 + add6@20
-      endlet
-      endlet
-      endlet
+      end
+      end
+      end
     |};
   [%expect
     {|
@@ -132,25 +132,27 @@ let%expect_test "Functions" =
 ;;
 
 let%expect_test "Exceptions" =
-  test_string "try 456 with exn -> 123 endtry";
-  [%expect "(MkTry (MkInt 456) exn (MkInt 123)) --> 456"];
-  test_string "try raise (456) with exn -> 123 endtry";
-  [%expect "(MkTry (MkRaise (MkInt 456)) exn (MkInt 123)) --> 123"];
-  test_string "try raise (456) with exn -> exn endtry";
-  [%expect "(MkTry (MkRaise (MkInt 456)) exn (MkVar exn)) --> 456"];
-  test_string "try 1 + raise (456) with exn -> exn endtry";
+  test_string "handle 456 with exn k -> 123 end";
+  [%expect "(MkHandle (MkInt 456) exn k (MkInt 123)) --> 456"];
+  test_string "handle perform (456) with exn k -> 123 end";
+  [%expect "(MkHandle (MkPerform (MkInt 456)) exn k (MkInt 123)) --> 123"];
+  test_string "handle perform (456) with exn k -> exn end";
+  [%expect "(MkHandle (MkPerform (MkInt 456)) exn k (MkVar exn)) --> 456"];
+  test_string "handle 1 + perform (456) with exn k -> exn end";
   [%expect
-    "(MkTry (MkBinOp (MkInt 1) IAdd (MkRaise (MkInt 456))) exn (MkVar exn)) \
-     --> 456"];
-  (try test_string "raise (123)" with
+    "(MkHandle (MkBinOp (MkInt 1) IAdd (MkPerform (MkInt 456))) exn k (MkVar \
+     exn)) --> 456"];
+  (try test_string "perform (123)" with
    | Interpreter.Eval.LangException _ -> ());
-  [%expect {| (MkRaise (MkInt 123)) --> |}];
-  (try test_string "try 1 + raise (456) with exn -> raise (123) endtry" with
+  [%expect {| (MkPerform (MkInt 123)) --> |}];
+  (try
+     test_string "handle 1 + perform (456) with exn k -> perform (123) end"
+   with
    | Interpreter.Eval.LangException _ -> ());
   [%expect
     {|
-    (MkTry (MkBinOp (MkInt 1) IAdd (MkRaise (MkInt 456))) exn
-     (MkRaise (MkInt 123))) -->
+    (MkHandle (MkBinOp (MkInt 1) IAdd (MkPerform (MkInt 456))) exn k
+     (MkPerform (MkInt 123))) -->
     |}]
 ;;
 

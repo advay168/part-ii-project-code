@@ -50,6 +50,6 @@ and expr' =
   | MkLet of Var.t * expr * expr
   | MkFun of Var.t * expr
   | MkApply of expr * expr
-  | MkRaise of expr
-  | MkTry of expr * Var.t * expr
+  | MkPerform of expr
+  | MkHandle of expr * Var.t * Var.t * expr
 [@@deriving sexp_of]

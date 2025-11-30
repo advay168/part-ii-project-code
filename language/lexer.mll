@@ -37,19 +37,16 @@ rule read =
   | "if" { IF }
   | "then" { THEN }
   | "else" { ELSE }
-  | "endif" { ENDIF }
   | "let" { LET }
   | ":=" { DEF_EQUALS }
   | "in" { IN }
-  | "endlet" { ENDLET }
   | "fun" { FUN }
   | "->" { ARROW }
-  | "endfun" { ENDFUN }
   | "@" { APPLY }
-  | "raise" { RAISE }
-  | "try" { TRY }
+  | "perform" { PERFORM }
+  | "handle" { HANDLE }
   | "with" { WITH }
-  | "endtry" { ENDTRY }
+  | "end" { END }
   | ident { IDENT (Lexing.lexeme lexbuf) }
   | whitespace { read lexbuf }
   | newline {  next_line lexbuf; read lexbuf }

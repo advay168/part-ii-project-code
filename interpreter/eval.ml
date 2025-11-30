@@ -103,8 +103,8 @@ module CEK = struct
     | CLetRec of Var.t * hole * Ast.expr * env
     | CApply1 of hole * Ast.expr * env
     | CApply2 of Value.t * hole
-    | CRaise of hole
-    | CHandler of Var.t * Ast.expr * env
+    | CPerform of hole
+    | CHandler of Var.t * Var.t * Ast.expr * env
   [@@deriving sexp_of]
 
   type t =
@@ -146,13 +146,14 @@ module CEK = struct
         let env = force env in
         let env' = Env.set name value env in
         { c = Expr body; e = env'; k = cs }
-      | CRaise Hole ->
+      | CPerform Hole ->
         (match cs with
          | [] -> raise (LangException value)
-         | CHandler (name, body, env) :: cs ->
+         | CHandler (name, kont, body, env) :: cs ->
            let env' = Env.set name value env in
+           let env' = Env.set kont (Value.VInt 0 (* TODO *)) env' in
            { c = Expr body; e = env'; k = cs }
-         | _ :: cs -> { c = Value value; e = env; k = CRaise Hole :: cs })
+         | _ :: cs -> { c = Value value; e = env; k = CPerform Hole :: cs })
       | CHandler _ -> { e = env; c = Value value; k = cs }
     in
     let translate_expr = function
@@ -180,9 +181,12 @@ module CEK = struct
         { c = Value (VFun (name, body, lazy env)); e = env; k = cs }
       | MkApply (exprFn, exprArg) ->
         { c = Expr exprFn; e = env; k = CApply1 (Hole, exprArg, env) :: cs }
-      | MkRaise expr -> { c = Expr expr; e = env; k = CRaise Hole :: cs }
-      | MkTry (body, name, handler) ->
-        { c = Expr body; e = env; k = CHandler (name, handler, env) :: cs }
+      | MkPerform expr -> { c = Expr expr; e = env; k = CPerform Hole :: cs }
+      | MkHandle (body, name, kont, handler) ->
+        { c = Expr body
+        ; e = env
+        ; k = CHandler (name, kont, handler, env) :: cs
+        }
     in
     match e_or_v with
     | Value v ->
@@ -253,10 +257,14 @@ let eval expr =
       let env' = force env' in
       let arg = eval (env, exprArg) in
       eval (Env.set name arg env', body)
-    | MkRaise expr -> raise (LangException (eval (env, expr)))
-    | MkTry (body, name, handler) ->
+    | MkPerform expr -> raise (LangException (eval (env, expr)))
+    | MkHandle (body, name, kont, handler) ->
       (try eval (env, body) with
-       | LangException exn -> eval (Env.set name exn env, handler))
+       | LangException exn ->
+         let env' =
+           env |> Env.set name exn |> Env.set kont (Value.VInt 0 (* TODO *))
+         in
+         eval (env', handler))
   in
   eval (Env.empty, expr)
 ;;

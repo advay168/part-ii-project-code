@@ -13,14 +13,14 @@ let rec pp (expr : Ast.expr) =
    | MkBinOp (e1, BOr, e2) -> pp e1 ^ " || " ^ pp e2
    | MkNot e -> "~" ^ pp e
    | MkIf (e1, e2, e3) ->
-     "if " ^ pp e1 ^ " then " ^ pp e2 ^ " else " ^ pp e3 ^ " endif"
+     "if " ^ pp e1 ^ " then " ^ pp e2 ^ " else " ^ pp e3 ^ " end"
    | MkVar name -> name
    | MkLet (name, e1, e2) ->
-     "let " ^ name ^ " := " ^ pp e1 ^ " in " ^ pp e2 ^ " endlet"
-   | MkFun (name, e) -> "fun " ^ name ^ " -> " ^ pp e ^ " endfun"
+     "let " ^ name ^ " := " ^ pp e1 ^ " in " ^ pp e2 ^ " end"
+   | MkFun (name, e) -> "fun " ^ name ^ " -> " ^ pp e ^ " end"
    | MkApply (e1, e2) -> pp e1 ^ " @ " ^ pp e2
-   | MkRaise e -> "raise ( " ^ pp e ^ " )"
-   | MkTry (e1, name, e2) ->
-     "try " ^ pp e1 ^ " with " ^ name ^ " -> " ^ pp e2 ^ " endtry")
+   | MkPerform e -> "perform ( " ^ pp e ^ " )"
+   | MkHandle (e1, name, kont, e2) ->
+     "handle " ^ pp e1 ^ " with " ^ name ^ " " ^ kont ^ " -> " ^ pp e2 ^ " end")
   |> wrap
 ;;
