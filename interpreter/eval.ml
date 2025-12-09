@@ -1,78 +1,45 @@
 open! Base
 open Language
 
-let repeat s n = String.concat (List.init n ~f:(Fn.const s))
+(* Mutually recursive modules as [Value.t] needs to depend on [Main.continuation]. *)
+module rec Value : sig
+  type t =
+    | VInt of int
+    | VBool of bool
+    | VFun of Var.t * Ast.expr * t Env.t lazy_t
+    | VContinuation of Main.continuation list
 
-let print_table ~header ~stringify lst =
-  let rows = List.map ~f:stringify lst in
-  let l1, l2, l3 =
-    let cs, es, ks = List.unzip3 (header :: rows) in
-    let max_length cells =
-      cells
-      |> List.map ~f:String.length
-      |> List.max_elt ~compare
-      |> Option.value_exn
-    in
-    max_length cs, max_length es, max_length ks
-  in
-  let print_seps left mid right =
-    Stdio.print_endline
-      (left
-       ^ String.concat
-           ~sep:mid
-           (List.map ~f:(fun l -> repeat "─" (l + 2)) [ l1; l2; l3 ])
-       ^ right)
-  in
-  let print_row =
-    fun (c, e, k) ->
-    Stdlib.Printf.printf "│ %-*s │ %-*s │ %-*s │\n" l1 c l2 e l3 k
-  in
-  print_seps "┌" "┬" "┐";
-  print_row header;
-  print_seps "├" "┼" "┤";
-  List.iter ~f:print_row rows;
-  print_seps "└" "┴" "┘"
-;;
+  val sexp_of_t : t -> Sexp.t
+  val string_of_t : t -> string
+end = struct
+  type t =
+    | VInt of int
+    | VBool of bool
+    | VFun of Var.t * Ast.expr * t Env.t lazy_t
+    | VContinuation of Main.continuation list
 
-exception TypeError of string * Value.t
-exception UnboundVarError of string * Value.t Env.t
-exception LangException of Value.t
+  let string_of_t = function
+    | VInt int -> Int.to_string int
+    | VBool bool -> Bool.to_string bool
+    | VFun _ -> "<fun>"
+    | VContinuation _ -> "<kont>"
+  ;;
 
-let as_int = function
-  | Value.VInt int -> int
-  | v -> raise (TypeError ("int", v))
-;;
+  let sexp_of_t t = Sexp.Atom (string_of_t t)
+end
 
-let as_bool = function
-  | Value.VBool bool -> bool
-  | v -> raise (TypeError ("bool", v))
-;;
+and Main : sig
+  exception TypeError of string * Value.t
+  exception UnboundVarError of string * Value.t Env.t
+  exception LangException of Value.t
 
-let as_func = function
-  | Value.VFun (name, body, env) -> name, body, env
-  | v -> raise (TypeError ("func", v))
-;;
+  type continuation
 
-let perform_bin_op (v1, (op : Ast.binOp), v2) : Value.t =
-  match op with
-  | IAdd -> VInt (as_int v1 + as_int v2)
-  | IMul -> VInt (as_int v1 * as_int v2)
-  | IEql -> VBool (as_int v1 = as_int v2)
-  | BAnd -> VBool (as_bool v1 && as_bool v2)
-  | BOr -> VBool (as_bool v1 || as_bool v2)
-;;
-
-let lookup name env =
-  match Env.get name env with
-  | Some v -> v
-  | None -> raise (UnboundVarError (name, env))
-;;
-
-module CEK = struct
-  type env = Value.t Env.t
-
-  let string_of_env = Env.string_of_t Value.string_of_t
-  let sexp_of_env env = env |> string_of_env |> Sexp.Atom
+  val eval : debug:bool -> Language.Ast.expr -> Value.t
+end = struct
+  exception TypeError of string * Value.t
+  exception UnboundVarError of string * Value.t Env.t
+  exception LangException of Value.t
 
   type expr_or_val =
     | Expr of Ast.expr
@@ -94,6 +61,11 @@ module CEK = struct
     let sexp_of_t t = Sexp.Atom ("'" ^ t ^ "'")
   end
 
+  type env = Value.t Env.t
+
+  let string_of_env = Env.string_of_t Value.string_of_t
+  let sexp_of_env env = env |> string_of_env |> Sexp.Atom
+
   type continuation =
     | CNot of hole
     | CBinOp1 of hole * Ast.binOp * Ast.expr * env
@@ -103,7 +75,7 @@ module CEK = struct
     | CLetRec of Var.t * hole * Ast.expr * env
     | CApply1 of hole * Ast.expr * env
     | CApply2 of Value.t * hole
-    | CPerform of hole
+    | CPerform of hole * continuation list
     | CHandler of Var.t * Var.t * Ast.expr * env
   [@@deriving sexp_of]
 
@@ -112,6 +84,36 @@ module CEK = struct
     ; e : env
     ; k : continuation list
     }
+
+  let as_int = function
+    | Value.VInt int -> int
+    | v -> raise (TypeError ("int", v))
+  ;;
+
+  let as_bool = function
+    | Value.VBool bool -> bool
+    | v -> raise (TypeError ("bool", v))
+  ;;
+
+  let as_func = function
+    | Value.VFun (name, body, env) -> name, body, env
+    | v -> raise (TypeError ("func", v))
+  ;;
+
+  let perform_bin_op (v1, (op : Ast.binOp), v2) : Value.t =
+    match op with
+    | IAdd -> VInt (as_int v1 + as_int v2)
+    | IMul -> VInt (as_int v1 * as_int v2)
+    | IEql -> VBool (as_int v1 = as_int v2)
+    | BAnd -> VBool (as_bool v1 && as_bool v2)
+    | BOr -> VBool (as_bool v1 || as_bool v2)
+  ;;
+
+  let lookup name env =
+    match Env.get name env with
+    | Some v -> v
+    | None -> raise (UnboundVarError (name, env))
+  ;;
 
   let step ({ e = env; c = e_or_v; k = cs } : t) : t =
     let continue value c cs =
@@ -142,18 +144,30 @@ module CEK = struct
       | CApply1 (Hole, expr, env) ->
         { c = Expr expr; e = env; k = CApply2 (value, Hole) :: cs }
       | CApply2 (v', Hole) ->
-        let name, body, env = as_func v' in
-        let env = force env in
-        let env' = Env.set name value env in
-        { c = Expr body; e = env'; k = cs }
-      | CPerform Hole ->
+        (match v' with
+         | VContinuation konts -> { c = Value value; e = env; k = konts @ cs }
+         | _ ->
+           let name, body, env = as_func v' in
+           let env = force env in
+           let env' = Env.set name value env in
+           { c = Expr body; e = env'; k = cs })
+      | CPerform (Hole, saved_konts) ->
         (match cs with
          | [] -> raise (LangException value)
-         | CHandler (name, kont, body, env) :: cs ->
+         | (CHandler (name, kont, body, env) as deep_handler) :: cs ->
            let env' = Env.set name value env in
-           let env' = Env.set kont (Value.VInt 0 (* TODO *)) env' in
+           let env' =
+             Env.set
+               kont
+               (Value.VContinuation (saved_konts @ [ deep_handler ]))
+               env'
+           in
            { c = Expr body; e = env'; k = cs }
-         | _ :: cs -> { c = Value value; e = env; k = CPerform Hole :: cs })
+         | c :: cs ->
+           { c = Value value
+           ; e = env
+           ; k = CPerform (Hole, c :: saved_konts) :: cs
+           })
       | CHandler _ -> { e = env; c = Value value; k = cs }
     in
     let translate_expr = function
@@ -181,7 +195,8 @@ module CEK = struct
         { c = Value (VFun (name, body, lazy env)); e = env; k = cs }
       | MkApply (exprFn, exprArg) ->
         { c = Expr exprFn; e = env; k = CApply1 (Hole, exprArg, env) :: cs }
-      | MkPerform expr -> { c = Expr expr; e = env; k = CPerform Hole :: cs }
+      | MkPerform expr ->
+        { c = Expr expr; e = env; k = CPerform (Hole, []) :: cs }
       | MkHandle (body, name, kont, handler) ->
         { c = Expr body
         ; e = env
@@ -211,60 +226,20 @@ module CEK = struct
     then
       Language.Ast.without_showing_locs (fun () ->
         let stringify_k k =
-          "["
-          ^ (k
+          [ "[" ]
+          @ (k
              |> List.map ~f:(fun cont ->
-               cont |> sexp_of_continuation |> Sexp.to_string_hum)
-             |> String.concat ~sep:", ")
-          ^ "]"
+               cont
+               |> sexp_of_continuation
+               |> Sexp.to_string_hum
+               |> String.tr ~target:'\n' ~replacement:' '
+               |> fun x -> x ^ ","))
+          @ [ "]" ]
         in
         let stringify { c; e; k } =
-          string_of_expr_or_val c, string_of_env e, stringify_k k
+          [ string_of_expr_or_val c ], [ string_of_env e ], stringify_k k
         in
-        print_table ~header:("C", "E", "K") ~stringify history);
+        Util.print_table ~header:("C", "E", "K") ~stringify history);
     evaluated_value
   ;;
 end
-
-let cek_eval = CEK.eval
-
-let eval expr =
-  let rec eval (env, (expr : Ast.expr)) : Value.t =
-    match expr.e with
-    | MkInt int -> VInt int
-    | MkBinOp (expr1, op, expr2) ->
-      perform_bin_op (eval (env, expr1), op, eval (env, expr2))
-    | MkBool bool -> VBool bool
-    | MkNot expr -> VBool (not (as_bool (eval (env, expr))))
-    | MkIf (cond, exprTrue, exprFalse) ->
-      if as_bool (eval (env, cond))
-      then eval (env, exprTrue)
-      else eval (env, exprFalse)
-    | MkVar name -> lookup name env
-    | MkLet (name, expr1, expr2) ->
-      let value =
-        match expr1.e with
-        | MkFun (var, body) ->
-          let rec f = Value.VFun (var, body, lazy (Env.set name f env)) in
-          f
-        | _ -> eval (env, expr1)
-      in
-      let env' = Env.set name value env in
-      eval (env', expr2)
-    | MkFun (name, body) -> VFun (name, body, lazy env)
-    | MkApply (exprFn, exprArg) ->
-      let name, body, env' = as_func (eval (env, exprFn)) in
-      let env' = force env' in
-      let arg = eval (env, exprArg) in
-      eval (Env.set name arg env', body)
-    | MkPerform expr -> raise (LangException (eval (env, expr)))
-    | MkHandle (body, name, kont, handler) ->
-      (try eval (env, body) with
-       | LangException exn ->
-         let env' =
-           env |> Env.set name exn |> Env.set kont (Value.VInt 0 (* TODO *))
-         in
-         eval (env', handler))
-  in
-  eval (Env.empty, expr)
-;;

@@ -1,4 +1,5 @@
 open! Base
+include Interpreter
 
 let test_string str =
   Language.Ast.show_locs := false;
@@ -8,9 +9,7 @@ let test_string str =
   |> Sexp.to_string_hum
   |> Stdio.print_string;
   Stdio.print_string " --> ";
-  Interpreter.Eval.cek_eval ~debug:false parsed
-  |> Interpreter.Value.string_of_t
-  |> Stdio.print_endline
+  Eval.eval ~debug:false parsed |> Value.string_of_t |> Stdio.print_endline
 ;;
 
 let%expect_test "Test simple arithmetic" =
@@ -61,7 +60,7 @@ let%expect_test "Bool operation precedence" =
   [%expect
     {| (MkBinOp (MkBinOp (MkInt 1) IEql (MkInt 1)) BAnd (MkBool true)) --> true |}];
   (try test_string "~1 = 1" with
-   | Interpreter.Eval.TypeError _ -> ());
+   | Eval.TypeError _ -> ());
   [%expect {| (MkBinOp (MkNot (MkInt 1)) IEql (MkInt 1)) --> |}]
 ;;
 
@@ -75,10 +74,10 @@ let%expect_test "Let binds" =
   test_string "let x := 123 in let x := 456 in x end end";
   [%expect "(MkLet x (MkInt 123) (MkLet x (MkInt 456) (MkVar x))) --> 456"];
   (try test_string "x" with
-   | Interpreter.Eval.UnboundVarError _ -> ());
+   | Eval.UnboundVarError _ -> ());
   [%expect {| (MkVar x) --> |}];
   (try test_string "let x := x in x end" with
-   | Interpreter.Eval.UnboundVarError _ -> ());
+   | Eval.UnboundVarError _ -> ());
   [%expect {| (MkLet x (MkVar x) (MkVar x)) --> |}]
 ;;
 
@@ -143,17 +142,51 @@ let%expect_test "Exceptions" =
     "(MkHandle (MkBinOp (MkInt 1) IAdd (MkPerform (MkInt 456))) exn k (MkVar \
      exn)) --> 456"];
   (try test_string "perform (123)" with
-   | Interpreter.Eval.LangException _ -> ());
+   | Eval.LangException _ -> ());
   [%expect {| (MkPerform (MkInt 123)) --> |}];
   (try
      test_string "handle 1 + perform (456) with exn k -> perform (123) end"
    with
-   | Interpreter.Eval.LangException _ -> ());
+   | Eval.LangException _ -> ());
   [%expect
     {|
     (MkHandle (MkBinOp (MkInt 1) IAdd (MkPerform (MkInt 456))) exn k
      (MkPerform (MkInt 123))) -->
     |}]
+;;
+
+let%expect_test "Single/Multi-shot Effects" =
+  test_string "handle 456 with exn k -> k@123 end";
+  [%expect
+    "(MkHandle (MkInt 456) exn k (MkApply (MkVar k) (MkInt 123))) --> 456"];
+  test_string "handle perform (456) with exn k -> k@123 end";
+  [%expect
+    "(MkHandle (MkPerform (MkInt 456)) exn k (MkApply (MkVar k) (MkInt 123))) \
+     --> 123"];
+  test_string
+    "handle perform (456) with exn k -> if exn = 456 then k@123 else perform \
+     (1) end end";
+  [%expect
+    " \n\
+    \ (MkHandle (MkPerform (MkInt 456)) exn k\n\
+    \  (MkIf (MkBinOp (MkVar exn) IEql (MkInt 456)) (MkApply (MkVar k) (MkInt \
+     123))\n\
+    \   (MkPerform (MkInt 1)))) --> 123\n\
+    \ "];
+  test_string "handle 2 * perform (456) with exn k -> k@123 + k@789 end";
+  [%expect
+    " \n\
+    \ (MkHandle (MkBinOp (MkInt 2) IMul (MkPerform (MkInt 456))) exn k\n\
+    \  (MkBinOp (MkApply (MkVar k) (MkInt 123)) IAdd\n\
+    \   (MkApply (MkVar k) (MkInt 789)))) --> 1824\n\
+    \ "];
+  test_string "handle perform (456) + perform (456) with exn k -> k@123 end";
+  [%expect
+    " \n\
+    \ (MkHandle (MkBinOp (MkPerform (MkInt 456)) IAdd (MkPerform (MkInt 456))) \
+     exn\n\
+    \  k (MkApply (MkVar k) (MkInt 123))) --> 246\n\
+    \ "]
 ;;
 
 let%expect_test "Test location tracking" =
