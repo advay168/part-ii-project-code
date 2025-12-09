@@ -3,15 +3,17 @@ open Import
 open Cmdliner
 open Cmdliner.Term.Syntax
 
-let eval ~debug filename code =
+let eval ~debug ~verbose filename code =
   let parsed_expr = Language.Parser.parse ~filename code in
-  parsed_expr
-  |> Language.Ast.sexp_of_expr
-  |> Sexp.to_string_hum
-  |> Stdio.print_endline;
-  parsed_expr |> Language.Pretty_print.pp |> Stdio.print_endline;
+  if verbose
+  then (
+    parsed_expr
+    |> Language.Ast.sexp_of_expr
+    |> Sexp.to_string_hum
+    |> Stdio.print_endline;
+    parsed_expr |> Language.Pretty_print.pp |> Stdio.print_endline);
   try
-    let evaluated = Eval.cek_eval ~debug parsed_expr in
+    let evaluated = Eval.eval ~debug parsed_expr in
     Stdio.printf "Evaluated: %s\n" (Value.string_of_t evaluated)
   with
   | Eval.TypeError (msg, value) ->
@@ -21,7 +23,7 @@ let eval ~debug filename code =
       (Value.string_of_t value)
   | Eval.LangException value ->
     Stdio.printf
-      "Unhandled exception while evaluating program: `%s`\n"
+      "Unhandled effect while evaluating program: `%s`\n"
       (Value.string_of_t value)
 ;;
 
@@ -41,20 +43,26 @@ let prog =
   filename, String.strip code
 ;;
 
+let verbose =
+  Arg.(value & flag & info [ "v"; "verbose" ] ~doc:"Print parsed code.")
+;;
+
 let eval_cmd =
   let doc = "Evaluate a program." in
   Cmd.make (Cmd.info "eval" ~doc)
   @@
-  let+ filename, code = prog in
-  eval ~debug:false filename code
+  let+ filename, code = prog
+  and+ verbose = verbose in
+  eval ~debug:false ~verbose filename code
 ;;
 
 let debug_cmd =
   let doc = "Evaluate a program under a debugger." in
   Cmd.make (Cmd.info "debug" ~doc)
   @@
-  let+ filename, code = prog in
-  eval ~debug:true filename code
+  let+ filename, code = prog
+  and+ verbose = verbose in
+  eval ~debug:true ~verbose filename code
 ;;
 
 let main_cmd =
