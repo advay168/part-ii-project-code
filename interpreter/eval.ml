@@ -1,5 +1,8 @@
 open! Base
 open Language
+module Effect = Stdlib.Effect
+open Effect
+open Effect.Deep
 
 (* Mutually recursive modules as [Value.t] needs to depend on [Main.continuation]. *)
 module rec Value : sig
@@ -84,6 +87,8 @@ end = struct
     ; e : env
     ; k : continuation list
     }
+
+  type _ Effect.t += Debugger : t -> t Effect.t
 
   let as_int = function
     | Value.VInt int -> int
@@ -211,35 +216,62 @@ end = struct
     | Expr { e; loc = _ } -> translate_expr e
   ;;
 
+  let stringify { c; e; k } =
+    let stringify_k k =
+      [ "[" ]
+      @ (k
+         |> List.map ~f:(fun cont ->
+           cont
+           |> sexp_of_continuation
+           |> Sexp.to_string_hum
+           |> String.tr ~target:'\n' ~replacement:' '
+           |> fun x -> x ^ ","))
+      @ [ "]" ]
+    in
+    Language.Ast.without_showing_locs (fun () ->
+      [ string_of_expr_or_val c ], [ string_of_env e ], stringify_k k)
+  ;;
+
+  let nop_debugger f =
+    match f () with
+    | output -> output
+    | effect Debugger cek_state, k -> continue k cek_state
+  ;;
+
+  let repl_debugger f =
+    match f () with
+    | output -> output
+    | effect Debugger cek_state, k ->
+      let s1, s2, s3 = stringify cek_state in
+      Stdio.print_string "C: ";
+      List.iter ~f:Stdio.print_endline s1;
+      Stdio.print_string "E: ";
+      List.iter ~f:Stdio.print_endline s2;
+      Stdio.print_string "K: ";
+      List.iter ~f:Stdio.print_endline s3;
+      Stdio.print_string "debug> ";
+      Out_channel.flush_all ();
+      let _inp = Stdio.In_channel.input_line_exn Stdio.stdin in
+      continue k cek_state
+  ;;
+
   let eval ~debug expr =
     let rec driver ~history (state : t) =
       let history = state :: history in
       match state with
       | { c = Value v; e = _; k = [] } -> v, history
-      | _ -> driver ~history (step state)
+      | _ ->
+        let state' = perform (Debugger state) in
+        driver ~history (step state')
     in
+    let d = if debug then repl_debugger else nop_debugger in
     let evaluated_value, history =
-      driver ~history:[] { c = Expr expr; e = Env.empty; k = [] }
+      d (fun () -> driver ~history:[] { c = Expr expr; e = Env.empty; k = [] })
     in
-    let history = List.rev history in
     if debug
-    then
-      Language.Ast.without_showing_locs (fun () ->
-        let stringify_k k =
-          [ "[" ]
-          @ (k
-             |> List.map ~f:(fun cont ->
-               cont
-               |> sexp_of_continuation
-               |> Sexp.to_string_hum
-               |> String.tr ~target:'\n' ~replacement:' '
-               |> fun x -> x ^ ","))
-          @ [ "]" ]
-        in
-        let stringify { c; e; k } =
-          [ string_of_expr_or_val c ], [ string_of_env e ], stringify_k k
-        in
-        Util.print_table ~header:("C", "E", "K") ~stringify history);
+    then (
+      let history = List.rev history in
+      Util.print_table ~header:("C", "E", "K") ~stringify history);
     evaluated_value
   ;;
 end
