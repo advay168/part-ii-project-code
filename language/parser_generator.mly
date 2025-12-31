@@ -11,7 +11,7 @@
 %token BAND BOR BNOT
 %token IF THEN ELSE
 
-%token LPAREN RPAREN
+%token LPAREN RPAREN COMMA
 
 %token <string> IDENT
 %token LET DEF_EQUALS IN
@@ -45,9 +45,11 @@ prog:
 
 expr:  
   | int = INT                                                    { { loc = $loc; e = MkInt     (int)                } }
+  | bool = BOOL                                                  { { loc = $loc; e = MkBool    (bool)               } }
+  | LPAREN; RPAREN                                               { { loc = $loc; e = MkUnit                         } }
+  | LPAREN; e1 = expr; COMMA; e2 = expr; RPAREN                  { { loc = $loc; e = MkBinOp   (e1, EMkTuple, e2)   } }
   | e1 = expr; PLUS; e2 = expr                                   { { loc = $loc; e = MkBinOp   (e1, IAdd, e2)       } }
   | e1 = expr; MULT; e2 = expr                                   { { loc = $loc; e = MkBinOp   (e1, IMul, e2)       } }
-  | bool = BOOL                                                  { { loc = $loc; e = MkBool    (bool)               } }
   | e1 = expr; BOR; e2 = expr                                    { { loc = $loc; e = MkBinOp   (e1, BOr, e2)        } }
   | e1 = expr; BAND; e2 = expr                                   { { loc = $loc; e = MkBinOp   (e1, BAnd, e2)       } }
   | BNOT; e = expr                                               { { loc = $loc; e = MkNot     (e)                  } }

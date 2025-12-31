@@ -25,9 +25,11 @@ let sexp_of_annotated sexp_of_t { loc = startpos, endpos; e } =
     Sexp.Atom
       [%string {|<%{startpos.pos_fname}:{%{!sl}:%{!sc}..%{!el}:%{!ec}}>|}]
   in
-  match sexp_of_t e with
-  | Sexp.List lst -> Sexp.List (if !show_locs then lst @ [ loc_sexp ] else lst)
-  | Atom _ -> assert false
+  ((match sexp_of_t e with
+    | Sexp.List lst -> lst
+    | Atom _ as s -> [ s ])
+   @ if !show_locs then [ loc_sexp ] else [])
+  |> Sexp.List
 ;;
 
 type binOp =
@@ -36,14 +38,16 @@ type binOp =
   | IEql
   | BAnd
   | BOr
+  | EMkTuple
 [@@deriving sexp_of]
 
 type expr = expr' annotated
 
 and expr' =
   | MkInt of int
-  | MkBinOp of expr * binOp * expr
   | MkBool of bool
+  | MkUnit
+  | MkBinOp of expr * binOp * expr
   | MkNot of expr
   | MkIf of expr * expr * expr
   | MkVar of Var.t

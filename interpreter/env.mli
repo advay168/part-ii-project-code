@@ -1,4 +1,4 @@
-type 'value t
+type +'value t
 
 val string_of_t : ('value -> string) -> 'value t -> string
 val empty : 'value t

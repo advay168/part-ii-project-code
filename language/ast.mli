@@ -13,14 +13,16 @@ type binOp =
   | IEql
   | BAnd
   | BOr
+  | EMkTuple
 [@@deriving sexp_of]
 
 type expr = expr' annotated
 
 and expr' =
   | MkInt of int
-  | MkBinOp of expr * binOp * expr
   | MkBool of bool
+  | MkUnit
+  | MkBinOp of expr * binOp * expr
   | MkNot of expr
   | MkIf of expr * expr * expr
   | MkVar of Var.t

@@ -4,12 +4,21 @@ module Effect = Stdlib.Effect
 open Effect
 open Effect.Deep
 
+module Builtins = struct
+  type t =
+    | Fst
+    | Snd
+end
+
 (* Mutually recursive modules as [Value.t] needs to depend on [Main.continuation]. *)
 module rec Value : sig
   type t =
     | VInt of int
     | VBool of bool
+    | VUnit
+    | VTup of t * t
     | VFun of Var.t * Ast.expr * t Env.t lazy_t
+    | VFunBuiltin of Builtins.t
     | VContinuation of Main.continuation list
 
   val sexp_of_t : t -> Sexp.t
@@ -18,13 +27,20 @@ end = struct
   type t =
     | VInt of int
     | VBool of bool
+    | VUnit
+    | VTup of t * t
     | VFun of Var.t * Ast.expr * t Env.t lazy_t
+    | VFunBuiltin of Builtins.t
     | VContinuation of Main.continuation list
 
-  let string_of_t = function
+  let rec string_of_t = function
     | VInt int -> Int.to_string int
     | VBool bool -> Bool.to_string bool
+    | VUnit -> "()"
+    | VTup (e1, e2) -> "(" ^ string_of_t e1 ^ ", " ^ string_of_t e2 ^ ")"
     | VFun _ -> "<fun>"
+    | VFunBuiltin Fst -> "<builtin: fst>"
+    | VFunBuiltin Snd -> "<builtin: snd>"
     | VContinuation _ -> "<kont>"
   ;;
 
@@ -105,6 +121,11 @@ end = struct
     | v -> raise (TypeError ("func", v))
   ;;
 
+  let as_tuple = function
+    | Value.VTup (v1, v2) -> v1, v2
+    | v -> raise (TypeError ("tuple", v))
+  ;;
+
   let perform_bin_op (v1, (op : Ast.binOp), v2) : Value.t =
     match op with
     | IAdd -> VInt (as_int v1 + as_int v2)
@@ -112,6 +133,13 @@ end = struct
     | IEql -> VBool (as_int v1 = as_int v2)
     | BAnd -> VBool (as_bool v1 && as_bool v2)
     | BOr -> VBool (as_bool v1 || as_bool v2)
+    | EMkTuple -> VTup (v1, v2)
+  ;;
+
+  let perform_builtin (op : Builtins.t) (value : Value.t) : Value.t =
+    match op with
+    | Fst -> fst (as_tuple value)
+    | Snd -> snd (as_tuple value)
   ;;
 
   let lookup name env =
@@ -151,6 +179,8 @@ end = struct
       | CApply2 (v', Hole) ->
         (match v' with
          | VContinuation konts -> { c = Value value; e = env; k = konts @ cs }
+         | VFunBuiltin builtin ->
+           { c = Value (perform_builtin builtin value); e = env; k = cs }
          | _ ->
            let name, body, env = as_func v' in
            let env = force env in
@@ -175,11 +205,12 @@ end = struct
            })
       | CHandler _ -> { e = env; c = Value value; k = cs }
     in
-    let translate_expr = function
-      | Ast.MkInt int -> { c = Value (VInt int); e = env; k = cs }
+    let translate_expr : Ast.expr' -> t = function
+      | MkInt int -> { c = Value (VInt int); e = env; k = cs }
+      | MkBool bool -> { c = Value (VBool bool); e = env; k = cs }
+      | MkUnit -> { c = Value VUnit; e = env; k = cs }
       | MkBinOp (expr1, op, expr2) ->
         { e = env; c = Expr expr1; k = CBinOp1 (Hole, op, expr2, env) :: cs }
-      | MkBool bool -> { c = Value (VBool bool); e = env; k = cs }
       | MkNot expr -> { c = Expr expr; e = env; k = CNot Hole :: cs }
       | MkIf (exprCond, exprTrue, exprFalse) ->
         { c = Expr exprCond
@@ -214,6 +245,12 @@ end = struct
        | [] -> failwith "Internal error: No continuation to pass value to."
        | c :: cs -> continue v c cs)
     | Expr { e; loc = _ } -> translate_expr e
+  ;;
+
+  let builtins_env =
+    Env.empty
+    |> Env.set "fst" (Value.VFunBuiltin Fst)
+    |> Env.set "snd" (Value.VFunBuiltin Snd)
   ;;
 
   let stringify { c; e; k } =
@@ -266,7 +303,8 @@ end = struct
     in
     let d = if debug then repl_debugger else nop_debugger in
     let evaluated_value, history =
-      d (fun () -> driver ~history:[] { c = Expr expr; e = Env.empty; k = [] })
+      d (fun () ->
+        driver ~history:[] { c = Expr expr; e = builtins_env; k = [] })
     in
     if debug
     then (

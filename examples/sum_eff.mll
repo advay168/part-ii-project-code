@@ -1,8 +1,8 @@
-let numsGen := fun u ->
-  let u := perform (1) in
-  let u := perform (2) in
-  let u := perform (3) in
-  let u := perform (4) in
+let numsGen := fun _ ->
+  let _ := perform (1) in
+  let _ := perform (2) in
+  let _ := perform (3) in
+  let _ := perform (4) in
   0
   end
   end
@@ -10,14 +10,9 @@ let numsGen := fun u ->
   end
 end
 in
-let sum := fun gen ->
-  handle
-    gen@0
-  with
-    v k -> v + sum@k
-  end
-end
-in
-  sum@numsGen
+handle
+  numsGen@()
+with
+  v k -> v + k@()
 end
 end
