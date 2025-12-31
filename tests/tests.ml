@@ -64,6 +64,20 @@ let%expect_test "Bool operation precedence" =
   [%expect {| (MkBinOp (MkNot (MkInt 1)) IEql (MkInt 1)) --> |}]
 ;;
 
+let%expect_test "Test tuples" =
+  test_string "()";
+  [%expect "(MkUnit) --> ()"];
+  test_string "(1, 3)";
+  [%expect "(MkBinOp (MkInt 1) EMkTuple (MkInt 3)) --> (1, 3)"];
+  test_string "(1 + 1, 3)";
+  [%expect
+    "(MkBinOp (MkBinOp (MkInt 1) IAdd (MkInt 1)) EMkTuple (MkInt 3)) --> (2, 3)"];
+  test_string "fst@(1, 3)";
+  [%expect "(MkApply (MkVar fst) (MkBinOp (MkInt 1) EMkTuple (MkInt 3))) --> 1"];
+  test_string "snd@(1, 3)";
+  [%expect "(MkApply (MkVar snd) (MkBinOp (MkInt 1) EMkTuple (MkInt 3))) --> 3"]
+;;
+
 let%expect_test "Let binds" =
   test_string "let x := 123 in x + 1 end";
   [%expect "(MkLet x (MkInt 123) (MkBinOp (MkVar x) IAdd (MkInt 1))) --> 124"];

@@ -13,10 +13,12 @@ let next_line lexbuf =
 }
 let digit = ['0'-'9']
 
-let int = '-'? digit+
-let alpha = ['a'-'z' 'A'-'Z']
 
-let ident = alpha (alpha|digit)*
+let alpha_underscore = ['a'-'z' 'A'-'Z' '_']
+
+let ident = alpha_underscore (alpha_underscore|digit)*
+
+let int = '-'? digit+
 
 let whitespace = [' ' '\t']+
 let newline = '\r' | '\n' | "\r\n"
@@ -28,6 +30,7 @@ rule read =
   | '*' { MULT }
   | '(' { LPAREN }
   | ')' { RPAREN }
+  | ',' { COMMA }
   | "true" { BOOL true }
   | "false" { BOOL false }
   | "&&" { BAND }
