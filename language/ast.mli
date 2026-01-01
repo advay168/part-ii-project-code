@@ -30,7 +30,7 @@ and expr' =
   | MkFun of Var.t * expr
   | MkApply of expr * expr
   | MkPerform of Var.t * expr
-  | MkHandle of expr * handler
+  | MkHandle of expr * handler annotated list
 
 and handler =
   { eff : Var.t

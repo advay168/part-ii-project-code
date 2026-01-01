@@ -4,11 +4,11 @@ let find := fun f ->
   handle
     f@()
   with
-    Amb, _, k ->
+    | Amb, _, k ->
       handle
         k@true
       with
-        Fail, _, _ -> k@false
+        | Fail, _, _ -> k@false
       end
   end
 end

@@ -21,6 +21,7 @@ examples:
 	$(DUNE) exec --no-print-directory bin/main.exe -- eval examples/fact.mll
 	$(DUNE) exec --no-print-directory bin/main.exe -- eval examples/sum_eff.mll
 	$(DUNE) exec --no-print-directory bin/main.exe -- eval examples/amb_eff.mll
+	$(DUNE) exec --no-print-directory bin/main.exe -- eval examples/state_eff.mll
 
 test:
 	$(DUNE) runtest

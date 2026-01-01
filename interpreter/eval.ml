@@ -95,7 +95,7 @@ end = struct
     | CApply1 of hole * Ast.expr * env
     | CApply2 of Value.t * hole
     | CPerform of Var.t * hole * continuation list
-    | CHandler of Ast.handler * env
+    | CHandler of Ast.handler list * env
   [@@deriving sexp_of]
 
   type t =
@@ -189,18 +189,19 @@ end = struct
       | CPerform (eff, Hole, saved_konts) ->
         (match cs with
          | [] -> raise (UnhandledEffect (eff, value))
-         | (CHandler ({ eff = eff_handler; arg; kont; body }, env) as
-            deep_handler)
-           :: cs
-           when String.equal eff eff_handler ->
-           let env' = Env.set arg value env in
+         | (CHandler (handlers, env) as deep_handler) :: cs
+           when List.exists handlers ~f:(fun h -> String.equal h.eff eff) ->
+           let handler =
+             List.find_exn handlers ~f:(fun h -> String.equal h.eff eff)
+           in
+           let env' = Env.set handler.arg value env in
            let env' =
              Env.set
-               kont
+               handler.kont
                (Value.VContinuation (List.rev (deep_handler :: saved_konts)))
                env'
            in
-           { c = Expr body; e = env'; k = cs }
+           { c = Expr handler.body; e = env'; k = cs }
          | c :: cs ->
            { c = Value value
            ; e = env
@@ -237,7 +238,10 @@ end = struct
       | MkPerform (eff, expr) ->
         { c = Expr expr; e = env; k = CPerform (eff, Hole, []) :: cs }
       | MkHandle (body, handler) ->
-        { c = Expr body; e = env; k = CHandler (handler, env) :: cs }
+        { c = Expr body
+        ; e = env
+        ; k = CHandler (List.map ~f:(fun h -> h.e) handler, env) :: cs
+        }
     in
     match e_or_v with
     | Value v ->

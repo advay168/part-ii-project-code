@@ -22,18 +22,16 @@ let rec pp (expr : Ast.expr) =
    | MkFun (name, e) -> "fun " ^ name ^ " -> " ^ pp e ^ " end"
    | MkApply (e1, e2) -> pp e1 ^ " @ " ^ pp e2
    | MkPerform (eff, e) -> "perform (" ^ eff ^ " " ^ pp e ^ ")"
-   | MkHandle (e, { eff; arg; kont; body }) ->
+   | MkHandle (e, hs) ->
      "handle "
      ^ pp e
      ^ " with "
-     ^ eff
-     ^ ", "
-     ^ ", "
-     ^ arg
-     ^ ", "
-     ^ kont
-     ^ " -> "
-     ^ pp body
+     ^ (hs |> List.map ~f:pp_handler |> String.concat ~sep:"\n")
      ^ " end")
   |> wrap
+
+and pp_handler
+      ({ e = { eff; arg; kont; body }; loc = _ } : Ast.handler Ast.annotated)
+  =
+  "| " ^ eff ^ ", " ^ arg ^ ", " ^ kont ^ " -> " ^ pp body
 ;;

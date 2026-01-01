@@ -19,7 +19,7 @@
 %token FUN ARROW APPLY
 
 %token PERFORM
-%token HANDLE WITH
+%token HANDLE WITH BAR
 
 %token END
 
@@ -60,7 +60,8 @@ expr:
   | FUN; name = IDENT; ARROW; e = expr; END                      { { loc = $loc; e = MkFun     (name, e)                         } }
   | e1 = expr; APPLY; e2 = expr                                  { { loc = $loc; e = MkApply   (e1, e2)                          } }
   | PERFORM; LPAREN; eff = IDENT; e = expr; RPAREN               { { loc = $loc; e = MkPerform (eff, e)                          } }
-  | HANDLE; e1 = expr; WITH;
-      eff = IDENT; COMMA; arg = IDENT; COMMA; kont = IDENT;
-      ARROW; e2 = expr; END                                      { { loc = $loc; e = MkHandle  (e1, {eff; arg; kont; body = e2}) } }
+  | HANDLE; e1 = expr; WITH; hs = nonempty_list(handler); END    { { loc = $loc; e = MkHandle  (e1, hs)                          } }
   | LPAREN; e = expr; RPAREN                                     { { loc = $loc; e = e.e                                         } }
+
+handler:
+  | BAR; eff = IDENT; COMMA; arg = IDENT; COMMA; kont = IDENT; ARROW; body = expr { { loc = $loc; e = {eff; arg; kont; body} } }
