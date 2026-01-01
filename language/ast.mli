@@ -29,6 +29,13 @@ and expr' =
   | MkLet of Var.t * expr * expr
   | MkFun of Var.t * expr
   | MkApply of expr * expr
-  | MkPerform of expr
-  | MkHandle of expr * Var.t * Var.t * expr
+  | MkPerform of Var.t * expr
+  | MkHandle of expr * handler annotated list
+
+and handler =
+  { eff : Var.t
+  ; arg : Var.t
+  ; kont : Var.t
+  ; body : expr
+  }
 [@@deriving sexp_of]

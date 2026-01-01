@@ -18,4 +18,6 @@ let get name lst =
   |> Option.map ~f:snd
 ;;
 
-let set name value lst = (name, value) :: lst
+let set name value lst =
+  if String.equal name "_" then lst else (name, value) :: lst
+;;

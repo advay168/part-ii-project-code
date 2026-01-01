@@ -39,9 +39,9 @@ end = struct
     | VUnit -> "()"
     | VTup (e1, e2) -> "(" ^ string_of_t e1 ^ ", " ^ string_of_t e2 ^ ")"
     | VFun _ -> "<fun>"
+    | VContinuation _ -> "<kont>"
     | VFunBuiltin Fst -> "<builtin: fst>"
     | VFunBuiltin Snd -> "<builtin: snd>"
-    | VContinuation _ -> "<kont>"
   ;;
 
   let sexp_of_t t = Sexp.Atom (string_of_t t)
@@ -50,7 +50,7 @@ end
 and Main : sig
   exception TypeError of string * Value.t
   exception UnboundVarError of string * Value.t Env.t
-  exception LangException of Value.t
+  exception UnhandledEffect of Var.t * Value.t
 
   type continuation
 
@@ -58,7 +58,7 @@ and Main : sig
 end = struct
   exception TypeError of string * Value.t
   exception UnboundVarError of string * Value.t Env.t
-  exception LangException of Value.t
+  exception UnhandledEffect of Var.t * Value.t
 
   type expr_or_val =
     | Expr of Ast.expr
@@ -94,8 +94,8 @@ end = struct
     | CLetRec of Var.t * hole * Ast.expr * env
     | CApply1 of hole * Ast.expr * env
     | CApply2 of Value.t * hole
-    | CPerform of hole * continuation list
-    | CHandler of Var.t * Var.t * Ast.expr * env
+    | CPerform of Var.t * hole * continuation list
+    | CHandler of Ast.handler list * env
   [@@deriving sexp_of]
 
   type t =
@@ -186,22 +186,26 @@ end = struct
            let env = force env in
            let env' = Env.set name value env in
            { c = Expr body; e = env'; k = cs })
-      | CPerform (Hole, saved_konts) ->
+      | CPerform (eff, Hole, saved_konts) ->
         (match cs with
-         | [] -> raise (LangException value)
-         | (CHandler (name, kont, body, env) as deep_handler) :: cs ->
-           let env' = Env.set name value env in
+         | [] -> raise (UnhandledEffect (eff, value))
+         | (CHandler (handlers, env) as deep_handler) :: cs
+           when List.exists handlers ~f:(fun h -> String.equal h.eff eff) ->
+           let handler =
+             List.find_exn handlers ~f:(fun h -> String.equal h.eff eff)
+           in
+           let env' = Env.set handler.arg value env in
            let env' =
              Env.set
-               kont
-               (Value.VContinuation (saved_konts @ [ deep_handler ]))
+               handler.kont
+               (Value.VContinuation (List.rev (deep_handler :: saved_konts)))
                env'
            in
-           { c = Expr body; e = env'; k = cs }
+           { c = Expr handler.body; e = env'; k = cs }
          | c :: cs ->
            { c = Value value
            ; e = env
-           ; k = CPerform (Hole, c :: saved_konts) :: cs
+           ; k = CPerform (eff, Hole, c :: saved_konts) :: cs
            })
       | CHandler _ -> { e = env; c = Value value; k = cs }
     in
@@ -231,12 +235,12 @@ end = struct
         { c = Value (VFun (name, body, lazy env)); e = env; k = cs }
       | MkApply (exprFn, exprArg) ->
         { c = Expr exprFn; e = env; k = CApply1 (Hole, exprArg, env) :: cs }
-      | MkPerform expr ->
-        { c = Expr expr; e = env; k = CPerform (Hole, []) :: cs }
-      | MkHandle (body, name, kont, handler) ->
+      | MkPerform (eff, expr) ->
+        { c = Expr expr; e = env; k = CPerform (eff, Hole, []) :: cs }
+      | MkHandle (body, handler) ->
         { c = Expr body
         ; e = env
-        ; k = CHandler (name, kont, handler, env) :: cs
+        ; k = CHandler (List.map ~f:(fun h -> h.e) handler, env) :: cs
         }
     in
     match e_or_v with

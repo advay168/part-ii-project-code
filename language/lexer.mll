@@ -49,6 +49,7 @@ rule read =
   | "perform" { PERFORM }
   | "handle" { HANDLE }
   | "with" { WITH }
+  | "|" { BAR }
   | "end" { END }
   | ident { IDENT (Lexing.lexeme lexbuf) }
   | whitespace { read lexbuf }

@@ -7,7 +7,7 @@ end
 module Main : sig
   exception TypeError of string * Value.t
   exception UnboundVarError of string * Value.t Env.t
-  exception LangException of Value.t
+  exception UnhandledEffect of Language.Var.t * Value.t
 
   val eval : debug:bool -> Language.Ast.expr -> Value.t
 end

@@ -22,8 +22,7 @@ let sexp_of_annotated sexp_of_t { loc = startpos, endpos; e } =
     let sl, sc = startpos.pos_lnum, startpos.pos_cnum - startpos.pos_bol + 1 in
     let el, ec = endpos.pos_lnum, endpos.pos_cnum - endpos.pos_bol + 1 in
     let ( ! ) = Int.to_string in
-    Sexp.Atom
-      [%string {|<%{startpos.pos_fname}:{%{!sl}:%{!sc}..%{!el}:%{!ec}}>|}]
+    Sexp.Atom [%string {|<%{!sl}:%{!sc}..%{!el}:%{!ec}>|}]
   in
   ((match sexp_of_t e with
     | Sexp.List lst -> lst
@@ -54,6 +53,13 @@ and expr' =
   | MkLet of Var.t * expr * expr
   | MkFun of Var.t * expr
   | MkApply of expr * expr
-  | MkPerform of expr
-  | MkHandle of expr * Var.t * Var.t * expr
+  | MkPerform of Var.t * expr
+  | MkHandle of expr * handler annotated list
+
+and handler =
+  { eff : Var.t
+  ; arg : Var.t
+  ; kont : Var.t
+  ; body : expr
+  }
 [@@deriving sexp_of]

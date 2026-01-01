@@ -145,75 +145,122 @@ let%expect_test "Functions" =
 ;;
 
 let%expect_test "Exceptions" =
-  test_string "handle 456 with exn k -> 123 end";
-  [%expect "(MkHandle (MkInt 456) exn k (MkInt 123)) --> 456"];
-  test_string "handle perform (456) with exn k -> 123 end";
-  [%expect "(MkHandle (MkPerform (MkInt 456)) exn k (MkInt 123)) --> 123"];
-  test_string "handle perform (456) with exn k -> exn end";
-  [%expect "(MkHandle (MkPerform (MkInt 456)) exn k (MkVar exn)) --> 456"];
-  test_string "handle 1 + perform (456) with exn k -> exn end";
+  test_string "handle 456 with | _, arg, k -> 123 end";
   [%expect
-    "(MkHandle (MkBinOp (MkInt 1) IAdd (MkPerform (MkInt 456))) exn k (MkVar \
-     exn)) --> 456"];
-  (try test_string "perform (123)" with
-   | Eval.LangException _ -> ());
-  [%expect {| (MkPerform (MkInt 123)) --> |}];
-  (try
-     test_string "handle 1 + perform (456) with exn k -> perform (123) end"
-   with
-   | Eval.LangException _ -> ());
+    {| (MkHandle (MkInt 456) (((eff _) (arg arg) (kont k) (body (MkInt 123))))) --> 456 |}];
+  test_string "handle perform (Exn 456) with | Exn, arg, k -> 123 end";
   [%expect
     {|
-    (MkHandle (MkBinOp (MkInt 1) IAdd (MkPerform (MkInt 456))) exn k
-     (MkPerform (MkInt 123))) -->
+    (MkHandle (MkPerform Exn (MkInt 456))
+     (((eff Exn) (arg arg) (kont k) (body (MkInt 123))))) --> 123
+    |}];
+  test_string "handle perform (Exn 456) with | Exn, arg, k -> arg end";
+  [%expect
+    {|
+    (MkHandle (MkPerform Exn (MkInt 456))
+     (((eff Exn) (arg arg) (kont k) (body (MkVar arg))))) --> 456
+    |}];
+  test_string "handle 1 + perform (Exn 456) with | Exn, arg, k -> arg end";
+  [%expect
+    {|
+    (MkHandle (MkBinOp (MkInt 1) IAdd (MkPerform Exn (MkInt 456)))
+     (((eff Exn) (arg arg) (kont k) (body (MkVar arg))))) --> 456
+    |}];
+  (try test_string "perform (Exn 123)" with
+   | Eval.UnhandledEffect _ -> ());
+  [%expect {| (MkPerform Exn (MkInt 123)) --> |}];
+  (try
+     test_string
+       "handle 1 + perform (Exn 456) with | Exn, arg, k -> perform (Exn 123) \
+        end"
+   with
+   | Eval.UnhandledEffect _ -> ());
+  [%expect
+    {|
+    (MkHandle (MkBinOp (MkInt 1) IAdd (MkPerform Exn (MkInt 456)))
+     (((eff Exn) (arg arg) (kont k) (body (MkPerform Exn (MkInt 123)))))) -->
     |}]
 ;;
 
 let%expect_test "Single/Multi-shot Effects" =
-  test_string "handle 456 with exn k -> k@123 end";
+  test_string "handle 456 with | Eff, arg, k -> k@123 end";
   [%expect
-    "(MkHandle (MkInt 456) exn k (MkApply (MkVar k) (MkInt 123))) --> 456"];
-  test_string "handle perform (456) with exn k -> k@123 end";
+    {|
+    (MkHandle (MkInt 456)
+     (((eff Eff) (arg arg) (kont k) (body (MkApply (MkVar k) (MkInt 123)))))) --> 456
+    |}];
+  test_string "handle perform (Eff 456) with | Eff, arg, k -> k@123 end";
   [%expect
-    "(MkHandle (MkPerform (MkInt 456)) exn k (MkApply (MkVar k) (MkInt 123))) \
-     --> 123"];
+    {|
+    (MkHandle (MkPerform Eff (MkInt 456))
+     (((eff Eff) (arg arg) (kont k) (body (MkApply (MkVar k) (MkInt 123)))))) --> 123
+    |}];
   test_string
-    "handle perform (456) with exn k -> if exn = 456 then k@123 else perform \
-     (1) end end";
+    "handle perform (Eff 456) with | Eff, arg, k -> if arg = 456 then k@123 \
+     else perform (Eff 1) end end";
   [%expect
-    " \n\
-    \ (MkHandle (MkPerform (MkInt 456)) exn k\n\
-    \  (MkIf (MkBinOp (MkVar exn) IEql (MkInt 456)) (MkApply (MkVar k) (MkInt \
-     123))\n\
-    \   (MkPerform (MkInt 1)))) --> 123\n\
-    \ "];
-  test_string "handle 2 * perform (456) with exn k -> k@123 + k@789 end";
+    {|
+    (MkHandle (MkPerform Eff (MkInt 456))
+     (((eff Eff) (arg arg) (kont k)
+       (body
+        (MkIf (MkBinOp (MkVar arg) IEql (MkInt 456))
+         (MkApply (MkVar k) (MkInt 123)) (MkPerform Eff (MkInt 1))))))) --> 123
+    |}];
+  test_string
+    "handle 2 * perform (Eff 456) with | Eff, arg, k -> k@123 + k@789 end";
   [%expect
-    " \n\
-    \ (MkHandle (MkBinOp (MkInt 2) IMul (MkPerform (MkInt 456))) exn k\n\
-    \  (MkBinOp (MkApply (MkVar k) (MkInt 123)) IAdd\n\
-    \   (MkApply (MkVar k) (MkInt 789)))) --> 1824\n\
-    \ "];
-  test_string "handle perform (456) + perform (456) with exn k -> k@123 end";
+    {|
+    (MkHandle (MkBinOp (MkInt 2) IMul (MkPerform Eff (MkInt 456)))
+     (((eff Eff) (arg arg) (kont k)
+       (body
+        (MkBinOp (MkApply (MkVar k) (MkInt 123)) IAdd
+         (MkApply (MkVar k) (MkInt 789))))))) --> 1824
+    |}];
+  test_string
+    "handle perform (Eff 456) + perform (Eff 456) with | Eff, arg, k -> k@123 \
+     end";
   [%expect
-    " \n\
-    \ (MkHandle (MkBinOp (MkPerform (MkInt 456)) IAdd (MkPerform (MkInt 456))) \
-     exn\n\
-    \  k (MkApply (MkVar k) (MkInt 123))) --> 246\n\
-    \ "]
+    {|
+    (MkHandle
+     (MkBinOp (MkPerform Eff (MkInt 456)) IAdd (MkPerform Eff (MkInt 456)))
+     (((eff Eff) (arg arg) (kont k) (body (MkApply (MkVar k) (MkInt 123)))))) --> 246
+    |}]
+;;
+
+let%expect_test "Named Effects" =
+  test_string "handle perform (Eff1 ()) with | Eff1, arg, k -> k@123 end";
+  [%expect
+    {|
+    (MkHandle (MkPerform Eff1 (MkUnit))
+     (((eff Eff1) (arg arg) (kont k) (body (MkApply (MkVar k) (MkInt 123)))))) --> 123
+    |}];
+  test_string
+    "handle handle perform (Eff2 ()) with | Eff1, arg1, k1 -> k1@123 end with \
+     | Eff2, arg2, k2 -> k2@456 end";
+  [%expect
+    {|
+    (MkHandle
+     (MkHandle (MkPerform Eff2 (MkUnit))
+      (((eff Eff1) (arg arg1) (kont k1) (body (MkApply (MkVar k1) (MkInt 123))))))
+     (((eff Eff2) (arg arg2) (kont k2) (body (MkApply (MkVar k2) (MkInt 456)))))) --> 456
+    |}]
 ;;
 
 let%expect_test "Test location tracking" =
   Language.Ast.show_locs := true;
-  Language.Parser.parse ~filename:"test" "1 + 12\n + 3"
+  Language.Parser.parse
+    ~filename:"test"
+    "handle 1 + 12\n + 3 with\n| Exn, arg, k -> 123 end"
   |> Language.Ast.sexp_of_expr
   |> Sexp.to_string_hum
   |> Stdio.print_endline;
   [%expect
-    " \n\
-    \ (MkBinOp\n\
-    \  (MkBinOp (MkInt 1 <test:{1:1..1:2}>) IAdd (MkInt 12 <test:{1:5..1:7}>)\n\
-    \   <test:{1:1..1:7}>)\n\
-    \  IAdd (MkInt 3 <test:{2:4..2:5}>) <test:{1:1..2:5}>)\n\
-    \ "]
+    {|
+    (MkHandle
+     (MkBinOp
+      (MkBinOp (MkInt 1 <1:8..1:9>) IAdd (MkInt 12 <1:12..1:14>) <1:8..1:14>)
+      IAdd (MkInt 3 <2:4..2:5>) <1:8..2:5>)
+     (((eff Exn) (arg arg) (kont k) (body (MkInt 123 <3:18..3:21>)) <3:1..3:21>))
+     <1:1..3:25>)
+    |}]
 ;;

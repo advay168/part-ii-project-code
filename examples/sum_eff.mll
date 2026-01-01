@@ -1,8 +1,8 @@
 let numsGen := fun _ ->
-  let _ := perform (1) in
-  let _ := perform (2) in
-  let _ := perform (3) in
-  let _ := perform (4) in
+  let _ := perform (Yield 1) in
+  let _ := perform (Yield 2) in
+  let _ := perform (Yield 3) in
+  let _ := perform (Yield 4) in
   0
   end
   end
@@ -13,6 +13,6 @@ in
 handle
   numsGen@()
 with
-  v k -> v + k@()
+  | Yield, v, k -> v + k@()
 end
 end

@@ -21,9 +21,10 @@ let eval ~debug ~verbose filename code =
       "TypeError: Expected value of type `%s` but got `%s`.\n"
       msg
       (Value.string_of_t value)
-  | Eval.LangException value ->
+  | Eval.UnhandledEffect (eff, value) ->
     Stdio.printf
-      "Unhandled effect while evaluating program: `%s`\n"
+      "Unhandled effect while evaluating program: `%s %s`\n"
+      eff
       (Value.string_of_t value)
 ;;
 
