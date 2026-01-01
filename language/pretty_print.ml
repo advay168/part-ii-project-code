@@ -21,8 +21,19 @@ let rec pp (expr : Ast.expr) =
      "let " ^ name ^ " := " ^ pp e1 ^ " in " ^ pp e2 ^ " end"
    | MkFun (name, e) -> "fun " ^ name ^ " -> " ^ pp e ^ " end"
    | MkApply (e1, e2) -> pp e1 ^ " @ " ^ pp e2
-   | MkPerform e -> "perform ( " ^ pp e ^ " )"
-   | MkHandle (e1, name, kont, e2) ->
-     "handle " ^ pp e1 ^ " with " ^ name ^ " " ^ kont ^ " -> " ^ pp e2 ^ " end")
+   | MkPerform (eff, e) -> "perform (" ^ eff ^ " " ^ pp e ^ ")"
+   | MkHandle (e, { eff; arg; kont; body }) ->
+     "handle "
+     ^ pp e
+     ^ " with "
+     ^ eff
+     ^ ", "
+     ^ ", "
+     ^ arg
+     ^ ", "
+     ^ kont
+     ^ " -> "
+     ^ pp body
+     ^ " end")
   |> wrap
 ;;
