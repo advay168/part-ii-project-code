@@ -2,7 +2,7 @@ open! Base
 include Interpreter
 
 let test_string str =
-  Language.Ast.show_locs := false;
+  Language.Ast.show_anns := false;
   let parsed = Language.Parser.parse ~filename:"test" str in
   parsed
   |> Language.Ast.sexp_of_expr
@@ -247,7 +247,7 @@ let%expect_test "Named Effects" =
 ;;
 
 let%expect_test "Test location tracking" =
-  Language.Ast.show_locs := true;
+  Language.Ast.show_anns := true;
   Language.Parser.parse
     ~filename:"test"
     "handle 1 + 12\n + 3 with\n| Exn, arg, k -> 123 end"
@@ -260,7 +260,7 @@ let%expect_test "Test location tracking" =
      (MkBinOp
       (MkBinOp (MkInt 1 <1:8..1:9>) IAdd (MkInt 12 <1:12..1:14>) <1:8..1:14>)
       IAdd (MkInt 3 <2:4..2:5>) <1:8..2:5>)
-     (((eff Exn) (arg arg) (kont k) (body (MkInt 123 <3:18..3:21>)) <3:1..3:21>))
+     (((eff Exn) (arg arg) (kont k) (body (MkInt 123 <3:18..3:21>))))
      <1:1..3:25>)
     |}]
 ;;

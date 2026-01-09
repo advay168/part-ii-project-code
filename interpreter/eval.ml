@@ -19,7 +19,7 @@ module rec Value : sig
     | VTup of t * t
     | VFun of Var.t * Ast.expr * t Env.t lazy_t
     | VFunBuiltin of Builtins.t
-    | VContinuation of Main.continuation list
+    | VContinuation of Main.kontinuation list
 
   val sexp_of_t : t -> Sexp.t
   val string_of_t : t -> string
@@ -31,7 +31,7 @@ end = struct
     | VTup of t * t
     | VFun of Var.t * Ast.expr * t Env.t lazy_t
     | VFunBuiltin of Builtins.t
-    | VContinuation of Main.continuation list
+    | VContinuation of Main.kontinuation list
 
   let rec string_of_t = function
     | VInt int -> Int.to_string int
@@ -52,7 +52,8 @@ and Main : sig
   exception UnboundVarError of string * Value.t Env.t
   exception UnhandledEffect of Var.t * Value.t
 
-  type continuation
+  type kontinuation = kontinuation' Ast.annotated
+  and kontinuation'
 
   val eval : debug:bool -> Language.Ast.expr -> Value.t
 end = struct
@@ -66,8 +67,8 @@ end = struct
   [@@deriving sexp_of]
 
   let string_of_expr_or_val = function
-    | Expr expr -> Pretty_print.pp expr
-    | Value value -> Value.string_of_t value
+    | Expr expr -> "E " ^ Pretty_print.pp expr
+    | Value value -> "V " ^ Value.string_of_t value
   ;;
 
   (** Solely for readability to denote where the continuation expects a hole.  *)
@@ -85,7 +86,9 @@ end = struct
   let string_of_env = Env.string_of_t Value.string_of_t
   let sexp_of_env env = env |> string_of_env |> Sexp.Atom
 
-  type continuation =
+  type kontinuation = kontinuation' Ast.annotated
+
+  and kontinuation' =
     | CNot of hole
     | CBinOp1 of hole * Ast.binOp * Ast.expr * env
     | CBinOp2 of Value.t * Ast.binOp * hole
@@ -94,17 +97,17 @@ end = struct
     | CLetRec of Var.t * hole * Ast.expr * env
     | CApply1 of hole * Ast.expr * env
     | CApply2 of Value.t * hole
-    | CPerform of Var.t * hole * continuation list
+    | CPerform of Var.t * hole * kontinuation list
     | CHandler of Ast.handler list * env
   [@@deriving sexp_of]
 
   type t =
     { c : expr_or_val
     ; e : env
-    ; k : continuation list
+    ; k : kontinuation list
     }
 
-  type _ Effect.t += Debugger : t -> t Effect.t
+  type _ Effect.t += Breakpoint : t -> bool Effect.t
 
   let as_int = function
     | Value.VInt int -> int
@@ -148,13 +151,14 @@ end = struct
     | None -> raise (UnboundVarError (name, env))
   ;;
 
-  let step ({ e = env; c = e_or_v; k = cs } : t) : t =
-    let continue value c cs =
-      match c with
+  let step ({ c = e_or_v; e = env; k = cs } : t) : t =
+    let continue value (c : kontinuation) cs =
+      let mk k = { c with x = k } in
+      match c.x with
       | CNot Hole ->
         { c = Value (VBool (not (as_bool value))); e = env; k = cs }
       | CBinOp1 (Hole, op, expr, env) ->
-        { c = Expr expr; e = env; k = CBinOp2 (value, op, Hole) :: cs }
+        { c = Expr expr; e = env; k = mk (CBinOp2 (value, op, Hole)) :: cs }
       | CBinOp2 (v', op, Hole) ->
         let result = perform_bin_op (v', op, value) in
         { c = Value result; e = env; k = cs }
@@ -175,7 +179,7 @@ end = struct
         let env' = Env.set name f env in
         { c = Expr expr; e = env'; k = cs }
       | CApply1 (Hole, expr, env) ->
-        { c = Expr expr; e = env; k = CApply2 (value, Hole) :: cs }
+        { c = Expr expr; e = env; k = mk (CApply2 (value, Hole)) :: cs }
       | CApply2 (v', Hole) ->
         (match v' with
          | VContinuation konts -> { c = Value value; e = env; k = konts @ cs }
@@ -189,7 +193,7 @@ end = struct
       | CPerform (eff, Hole, saved_konts) ->
         (match cs with
          | [] -> raise (UnhandledEffect (eff, value))
-         | (CHandler (handlers, env) as deep_handler) :: cs
+         | ({ x = CHandler (handlers, env); _ } as deep_handler) :: cs
            when List.exists handlers ~f:(fun h -> String.equal h.eff eff) ->
            let handler =
              List.find_exn handlers ~f:(fun h -> String.equal h.eff eff)
@@ -205,56 +209,55 @@ end = struct
          | c :: cs ->
            { c = Value value
            ; e = env
-           ; k = CPerform (eff, Hole, c :: saved_konts) :: cs
+           ; k = mk (CPerform (eff, Hole, c :: saved_konts)) :: cs
            })
       | CHandler _ -> { e = env; c = Value value; k = cs }
     in
-    let translate_expr : Ast.expr' -> t = function
-      | MkInt int -> { c = Value (VInt int); e = env; k = cs }
-      | MkBool bool -> { c = Value (VBool bool); e = env; k = cs }
-      | MkUnit -> { c = Value VUnit; e = env; k = cs }
+    let translate_expr (e : Ast.expr) : t =
+      let make ?k c =
+        { c
+        ; e = env
+        ; k =
+            (match k with
+             | None -> cs
+             | Some k -> { e with x = k } :: cs)
+        }
+      in
+      match e.x with
+      | MkInt int -> make @@ Value (VInt int)
+      | MkBool bool -> make @@ Value (VBool bool)
+      | MkUnit -> make @@ Value VUnit
       | MkBinOp (expr1, op, expr2) ->
-        { e = env; c = Expr expr1; k = CBinOp1 (Hole, op, expr2, env) :: cs }
-      | MkNot expr -> { c = Expr expr; e = env; k = CNot Hole :: cs }
+        make ~k:(CBinOp1 (Hole, op, expr2, env)) @@ Expr expr1
+      | MkNot expr -> make ~k:(CNot Hole) @@ Expr expr
       | MkIf (exprCond, exprTrue, exprFalse) ->
-        { c = Expr exprCond
-        ; e = env
-        ; k = CIf (Hole, exprTrue, exprFalse, env) :: cs
-        }
-      | MkVar name -> { c = Value (lookup name env); e = env; k = cs }
-      | MkLet (name, expr1, expr2) ->
-        (match expr1.e with
-         | MkFun _ ->
-           { c = Expr expr1
-           ; e = env
-           ; k = CLetRec (name, Hole, expr2, env) :: cs
-           }
-         | _ ->
-           { c = Expr expr1; e = env; k = CLet (name, Hole, expr2, env) :: cs })
-      | MkFun (name, body) ->
-        { c = Value (VFun (name, body, lazy env)); e = env; k = cs }
+        make ~k:(CIf (Hole, exprTrue, exprFalse, env)) @@ Expr exprCond
+      | MkVar name -> make @@ Value (lookup name env)
+      | MkLet (name, expr1, expr2) -> begin
+        match expr1.x with
+        | MkFun _ -> make ~k:(CLetRec (name, Hole, expr2, env)) @@ Expr expr1
+        | _ -> make ~k:(CLet (name, Hole, expr2, env)) @@ Expr expr1
+      end
+      | MkFun (name, body) -> make @@ Value (VFun (name, body, lazy env))
       | MkApply (exprFn, exprArg) ->
-        { c = Expr exprFn; e = env; k = CApply1 (Hole, exprArg, env) :: cs }
-      | MkPerform (eff, expr) ->
-        { c = Expr expr; e = env; k = CPerform (eff, Hole, []) :: cs }
+        make ~k:(CApply1 (Hole, exprArg, env)) @@ Expr exprFn
+      | MkPerform (eff, expr) -> make ~k:(CPerform (eff, Hole, [])) @@ Expr expr
       | MkHandle (body, handler) ->
-        { c = Expr body
-        ; e = env
-        ; k = CHandler (List.map ~f:(fun h -> h.e) handler, env) :: cs
-        }
+        make ~k:(CHandler (handler, env)) @@ Expr body
     in
     match e_or_v with
-    | Value v ->
-      (match cs with
-       | [] -> failwith "Internal error: No continuation to pass value to."
-       | c :: cs -> continue v c cs)
-    | Expr { e; loc = _ } -> translate_expr e
+    | Value v -> begin
+      match cs with
+      | [] -> failwith "Internal error: No continuation to pass value to."
+      | c :: cs -> continue v c cs
+    end
+    | Expr e -> translate_expr e
   ;;
 
   let builtins_env =
     Env.empty
-    |> Env.set "fst" (Value.VFunBuiltin Fst)
-    |> Env.set "snd" (Value.VFunBuiltin Snd)
+    |> Env.set ~hidden:true "fst" (Value.VFunBuiltin Fst)
+    |> Env.set ~hidden:true "snd" (Value.VFunBuiltin Snd)
   ;;
 
   let stringify { c; e; k } =
@@ -263,52 +266,95 @@ end = struct
       @ (k
          |> List.map ~f:(fun cont ->
            cont
-           |> sexp_of_continuation
+           |> sexp_of_kontinuation
            |> Sexp.to_string_hum
            |> String.tr ~target:'\n' ~replacement:' '
            |> fun x -> x ^ ","))
       @ [ "]" ]
     in
-    Language.Ast.without_showing_locs (fun () ->
+    Language.Ast.without_showing_anns (fun () ->
       [ string_of_expr_or_val c ], [ string_of_env e ], stringify_k k)
   ;;
 
-  let nop_debugger f =
-    match f () with
-    | output -> output
-    | effect Debugger cek_state, k -> continue k cek_state
+  let rec driver ~history ~break_immediately (state : t) =
+    let break_immediately =
+      if break_immediately then perform (Breakpoint state) else false
+    in
+    let history = state :: history in
+    match state with
+    | { c = Value v; e = _; k = [] } -> v, history
+    | { c = Expr { breakpoint = true; _ }; _ } ->
+      Stdio.print_endline "Breakpoint hit";
+      let break_immediately = perform (Breakpoint state) in
+      driver ~history ~break_immediately (step state)
+    | _ -> driver ~history ~break_immediately (step state)
   ;;
 
-  let repl_debugger f =
-    match f () with
-    | output -> output
-    | effect Debugger cek_state, k ->
-      let s1, s2, s3 = stringify cek_state in
-      Stdio.print_string "C: ";
-      List.iter ~f:Stdio.print_endline s1;
-      Stdio.print_string "E: ";
-      List.iter ~f:Stdio.print_endline s2;
-      Stdio.print_string "K: ";
-      List.iter ~f:Stdio.print_endline s3;
-      Stdio.print_string "debug> ";
-      Out_channel.flush_all ();
-      let _inp = Stdio.In_channel.input_line_exn Stdio.stdin in
-      continue k cek_state
-  ;;
+  module Debugger = struct
+    type state =
+      | Stepping of
+          { cek : t
+          ; driver_k : (bool, Value.t * t list) continuation
+          ; full_expr : Ast.expr
+          }
+
+    let prompt () =
+      Stdio.print_string "debugger> ";
+      Debugger_cmd_parser.parse (Stdio.In_channel.input_line_exn Stdio.stdin)
+    ;;
+
+    let rec debugger state =
+      match state with
+      | Stepping { cek; driver_k; full_expr } -> begin
+        match prompt () with
+        | Nop -> debugger state
+        | Help ->
+          Stdio.print_string Debugger_cmd_parser.help_text;
+          debugger state
+        | Continue -> continue driver_k false
+        | Step -> continue driver_k true
+        | ShowState ->
+          Util.print_table ~header:("C", "E", "K") ~stringify [ cek ];
+          debugger state
+        | Where ->
+          let () =
+            match cek.c with
+            | Value _ -> Stdio.print_endline "Cannot show location of value."
+            | Expr expr ->
+              let (sl, sc), (el, ec) = Ast.linecol_of_span expr.span in
+              Printf.sprintf "%d:%d..%d:%d" sl sc el ec |> Stdio.print_endline
+          in
+          debugger state
+        | Breakpoint pos ->
+          let success = Ast.mark_breakpoint pos full_expr in
+          if success
+          then Stdio.print_endline "Breakpoint set."
+          else Stdio.print_endline "Could not set breakpoint.";
+          debugger state
+        | Inspect var -> begin
+          match Env.get var cek.e with
+          | None ->
+            Stdio.print_endline "Variable not present";
+            debugger state
+          | Some value ->
+            value
+            |> Value.string_of_t
+            |> Printf.sprintf "`%s`: %s" var
+            |> Stdio.print_endline;
+            debugger state
+        end
+      end
+    ;;
+  end
 
   let eval ~debug expr =
-    let rec driver ~history (state : t) =
-      let history = state :: history in
-      match state with
-      | { c = Value v; e = _; k = [] } -> v, history
-      | _ ->
-        let state' = perform (Debugger state) in
-        driver ~history (step state')
-    in
-    let d = if debug then repl_debugger else nop_debugger in
+    let cek = { c = Expr expr; e = builtins_env; k = [] } in
     let evaluated_value, history =
-      d (fun () ->
-        driver ~history:[] { c = Expr expr; e = builtins_env; k = [] })
+      match driver ~history:[] ~break_immediately:debug cek with
+      | v -> v
+      | effect Breakpoint cek, driver_k ->
+        Util.print_table ~header:("C", "E", "K") ~stringify [ cek ];
+        Debugger.debugger (Stepping { cek; driver_k; full_expr = expr })
     in
     if debug
     then (

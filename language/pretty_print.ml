@@ -3,7 +3,7 @@ open! Base
 let wrap s = "(" ^ s ^ ")"
 
 let rec pp (expr : Ast.expr) =
-  (match expr.e with
+  (match expr.x with
    | MkInt int -> Int.to_string int
    | MkBool bool -> Bool.to_string bool
    | MkUnit -> "()"
@@ -30,8 +30,6 @@ let rec pp (expr : Ast.expr) =
      ^ " end")
   |> wrap
 
-and pp_handler
-      ({ e = { eff; arg; kont; body }; loc = _ } : Ast.handler Ast.annotated)
-  =
+and pp_handler { eff; arg; kont; body } =
   "| " ^ eff ^ ", " ^ arg ^ ", " ^ kont ^ " -> " ^ pp body
 ;;
