@@ -14,6 +14,7 @@ $ make examples
 # Runs `fact.mll`
 # Runs `sum_eff.mll`
 # Runs `amb_eff.mll`
+# Runs `state_eff.mll`
 
 $ make run
 > {Enter code here}

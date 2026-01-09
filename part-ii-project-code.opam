@@ -9,7 +9,7 @@ homepage: "https://github.com/advay168/part-ii-project-code"
 bug-reports: "https://github.com/advay168/part-ii-project-code/issues"
 depends: [
   "dune" {>= "3.20"}
-  "ocaml"
+  "ocaml" {>= "5.3"}
   "base"
   "cmdliner"
   "menhir"
