@@ -1,11 +1,19 @@
 (* Controls whether the source location is present when converting to sexp. *)
-val show_locs : bool ref
-val without_showing_locs : (unit -> 'a) -> 'a
+val show_anns : bool ref
+val without_showing_anns : (unit -> 'a) -> 'a
+
+type span = Lexing.position * Lexing.position
+
+val linecol_of_span : span -> (int * int) * (int * int)
 
 type 't annotated =
-  { loc : Lexing.position * Lexing.position
-  ; e : 't
+  { span : span
+  ; x : 't
+  ; mutable breakpoint : bool
   }
+[@@deriving sexp_of]
+
+val make : Lexing.position * Lexing.position -> 'a -> 'a annotated
 
 type binOp =
   | IAdd
@@ -30,7 +38,7 @@ and expr' =
   | MkFun of Var.t * expr
   | MkApply of expr * expr
   | MkPerform of Var.t * expr
-  | MkHandle of expr * handler annotated list
+  | MkHandle of expr * handler list
 
 and handler =
   { eff : Var.t
@@ -39,3 +47,5 @@ and handler =
   ; body : expr
   }
 [@@deriving sexp_of]
+
+val mark_breakpoint : int * int -> expr -> bool

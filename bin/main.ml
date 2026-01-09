@@ -36,7 +36,7 @@ let prog =
   let filename, code =
     match file with
     | "-" ->
-      Stdio.print_string "> ";
+      Stdio.print_string "code> ";
       Out_channel.flush_all ();
       "stdio", Stdio.In_channel.input_line_exn Stdio.stdin
     | file -> file, Stdio.In_channel.read_all file
@@ -74,4 +74,13 @@ let main_cmd =
   Cmd.group (Cmd.info "main.exe") ~default [ eval_cmd; debug_cmd ]
 ;;
 
-let () = if not !Sys.interactive then Stdlib.exit (Cmd.eval main_cmd)
+let () =
+  if not !Sys.interactive
+  then begin
+    try
+      Out_channel.set_buffered Stdio.stdout false;
+      Stdlib.exit (Cmd.eval ~catch:false main_cmd)
+    with
+    | End_of_file -> ()
+  end
+;;
