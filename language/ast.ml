@@ -1,4 +1,7 @@
-open Base
+open! Base
+
+let show_anns = ref true
+let without_showing_anns f = Ref.set_temporarily show_anns false ~f
 
 type span = Lexing.position * Lexing.position
 
@@ -15,8 +18,6 @@ type 't annotated =
   }
 
 let make span x = { span; x; breakpoint = false }
-let show_anns = ref true
-let without_showing_anns f = Ref.set_temporarily show_anns false ~f
 
 (* Custom sexpifier which is less verbose than that which would be generated. *)
 let sexp_of_annotated sexp_of_t { span; x; breakpoint } =
@@ -32,6 +33,16 @@ let sexp_of_annotated sexp_of_t { span; x; breakpoint } =
     | Atom _ as s -> [ s ])
    @ if !show_anns then [ ann_sexp ] else [])
   |> Sexp.List
+;;
+
+let split_source_by_expr source expr =
+  let start, end_ = expr.span in
+  ( String.sub source ~pos:0 ~len:start.pos_cnum
+  , String.sub source ~pos:start.pos_cnum ~len:(end_.pos_cnum - start.pos_cnum)
+  , String.sub
+      source
+      ~pos:end_.pos_cnum
+      ~len:(String.length source - end_.pos_cnum) )
 ;;
 
 type binOp =

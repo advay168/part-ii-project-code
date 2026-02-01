@@ -13,7 +13,7 @@ let eval ~debug ~verbose filename code =
     |> Stdio.print_endline;
     parsed_expr |> Language.Pretty_print.pp |> Stdio.print_endline);
   try
-    let evaluated = Eval.eval ~debug parsed_expr in
+    let evaluated = Eval.eval ~debug ~source:code parsed_expr in
     Stdio.printf "Evaluated: %s\n" (Value.string_of_t evaluated)
   with
   | Eval.TypeError (msg, value) ->

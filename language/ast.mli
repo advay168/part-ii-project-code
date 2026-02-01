@@ -1,7 +1,3 @@
-(* Controls whether the source location is present when converting to sexp. *)
-val show_anns : bool ref
-val without_showing_anns : (unit -> 'a) -> 'a
-
 type span = Lexing.position * Lexing.position
 
 val linecol_of_span : span -> (int * int) * (int * int)
@@ -14,6 +10,12 @@ type 't annotated =
 [@@deriving sexp_of]
 
 val make : Lexing.position * Lexing.position -> 'a -> 'a annotated
+val split_source_by_expr : string -> 'a annotated -> string * string * string
+
+(** Controls whether the source location is present when converting to sexp. *)
+val show_anns : bool ref
+
+val without_showing_anns : (unit -> 'a) -> 'a
 
 type binOp =
   | IAdd

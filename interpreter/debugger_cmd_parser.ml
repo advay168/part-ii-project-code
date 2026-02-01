@@ -15,7 +15,7 @@ let help_text =
 Help for debugger commands:
 - b/bp/break/breakpoint line:col -> Set breakpoint at location.
 - r/run/c/continue               -> Continue without debugging.
-- w/where                        -> Print the source location of the current expression.
+- w/where                        -> Highlight the source location of the current expression.
 - show/state/cek                 -> Print CEK state.
 - i/inspect var                  -> Print the value of variable `var`.
 - s/step                         -> Step the evaluation.
