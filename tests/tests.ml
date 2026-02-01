@@ -9,7 +9,7 @@ let test_string str =
   |> Sexp.to_string_hum
   |> Stdio.print_string;
   Stdio.print_string " --> ";
-  Eval.eval ~debug:false parsed |> Value.string_of_t |> Stdio.print_endline
+  Eval.eval ~debug:false ~source:str parsed |> Value.string_of_t |> Stdio.print_endline
 ;;
 
 let%expect_test "Test simple arithmetic" =

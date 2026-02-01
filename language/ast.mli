@@ -13,6 +13,8 @@ type 't annotated =
   }
 [@@deriving sexp_of]
 
+val split_source_by_expr: string -> 'a annotated -> string * string * string
+
 val make : Lexing.position * Lexing.position -> 'a -> 'a annotated
 
 type binOp =

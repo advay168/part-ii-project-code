@@ -34,6 +34,16 @@ let sexp_of_annotated sexp_of_t { span; x; breakpoint } =
   |> Sexp.List
 ;;
 
+let split_source_by_expr source expr =
+  let start, end_ = expr.span in
+  ( String.sub source ~pos:0 ~len:start.pos_cnum
+  , String.sub source ~pos:start.pos_cnum ~len:(end_.pos_cnum - start.pos_cnum)
+  , String.sub
+      source
+      ~pos:end_.pos_cnum
+      ~len:(String.length source - end_.pos_cnum) )
+;;
+
 type binOp =
   | IAdd
   | IMul
