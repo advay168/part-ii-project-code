@@ -55,7 +55,7 @@ and Main : sig
   type kontinuation = kontinuation' Ast.annotated
   and kontinuation'
 
-  val eval : debug:bool -> Language.Ast.expr -> Value.t
+  val eval : debug:bool -> source:string -> Language.Ast.expr -> Value.t
 end = struct
   exception TypeError of string * Value.t
   exception UnboundVarError of string * Value.t Env.t
@@ -65,11 +65,6 @@ end = struct
     | Expr of Ast.expr
     | Value of Value.t
   [@@deriving sexp_of]
-
-  let string_of_expr_or_val = function
-    | Expr expr -> "E " ^ Pretty_print.pp expr
-    | Value value -> "V " ^ Value.string_of_t value
-  ;;
 
   (** Solely for readability to denote where the continuation expects a hole.  *)
   type hole = Hole [@@deriving sexp_of]
@@ -260,7 +255,15 @@ end = struct
     |> Env.set ~hidden:true "snd" (Value.VFunBuiltin Snd)
   ;;
 
-  let stringify { c; e; k } =
+  let stringify source { c; e; k } =
+    let string_of_expr_or_val = function
+      | Expr expr ->
+        "E: "
+        ^
+        let _, s, _ = Ast.split_source_by_expr source expr in
+        s
+      | Value value -> "V: " ^ Value.string_of_t value
+    in
     let stringify_k k =
       [ "[" ]
       @ (k
@@ -303,63 +306,79 @@ end = struct
       Debugger_cmd_parser.parse (Stdio.In_channel.input_line_exn Stdio.stdin)
     ;;
 
-    let rec debugger state =
+    let rec debugger ~source state =
       match state with
       | Stepping { cek; driver_k; full_expr } -> begin
         match prompt () with
-        | Nop -> debugger state
+        | Nop -> debugger ~source state
         | Help ->
           Stdio.print_string Debugger_cmd_parser.help_text;
-          debugger state
+          debugger ~source state
         | Continue -> continue driver_k false
         | Step -> continue driver_k true
         | ShowState ->
-          Util.print_table ~header:("C", "E", "K") ~stringify [ cek ];
-          debugger state
+          Util.print_table
+            ~header:("C", "E", "K")
+            ~stringify:(stringify source)
+            [ cek ];
+          debugger ~source state
         | Where ->
           let () =
             match cek.c with
             | Value _ -> Stdio.print_endline "Cannot show location of value."
             | Expr expr ->
-              let (sl, sc), (el, ec) = Ast.linecol_of_span expr.span in
-              Printf.sprintf "%d:%d..%d:%d" sl sc el ec |> Stdio.print_endline
+              let prefix, here, suffix = Ast.split_source_by_expr source expr in
+              String.concat
+                [ prefix
+                ; here |> Util.with_ansi [ Underline; GreenFG ]
+                ; suffix
+                ]
+              |> Stdio.print_endline
+            (* let (sl, sc), (el, ec) = Ast.linecol_of_span expr.span in *)
+            (* Printf.sprintf "%d:%d..%d:%d" sl sc el ec |> Stdio.print_endline *)
           in
-          debugger state
+          debugger ~source state
         | Breakpoint pos ->
           let success = Ast.mark_breakpoint pos full_expr in
           if success
           then Stdio.print_endline "Breakpoint set."
           else Stdio.print_endline "Could not set breakpoint.";
-          debugger state
+          debugger ~source state
         | Inspect var -> begin
           match Env.get var cek.e with
           | None ->
             Stdio.print_endline "Variable not present";
-            debugger state
+            debugger ~source state
           | Some value ->
             value
             |> Value.string_of_t
             |> Printf.sprintf "`%s`: %s" var
             |> Stdio.print_endline;
-            debugger state
+            debugger ~source state
         end
       end
     ;;
   end
 
-  let eval ~debug expr =
+  let eval ~debug ~source expr =
     let cek = { c = Expr expr; e = builtins_env; k = [] } in
     let evaluated_value, history =
       match driver ~history:[] ~break_immediately:debug cek with
       | v -> v
       | effect Breakpoint cek, driver_k ->
-        Util.print_table ~header:("C", "E", "K") ~stringify [ cek ];
-        Debugger.debugger (Stepping { cek; driver_k; full_expr = expr })
+        Util.print_table
+          ~header:("C", "E", "K")
+          ~stringify:(stringify source)
+          [ cek ];
+        Debugger.debugger ~source (Stepping { cek; driver_k; full_expr = expr })
     in
     if debug
     then (
       let history = List.rev history in
-      Util.print_table ~header:("C", "E", "K") ~stringify history);
+      Util.print_table
+        ~header:("C", "E", "K")
+        ~stringify:(stringify source)
+        history);
     evaluated_value
   ;;
 end

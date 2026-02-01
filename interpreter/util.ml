@@ -1,5 +1,37 @@
 open! Base
 
+type ansi =
+  | Bold
+  | Italic
+  | Underline
+  | Blink
+  | RedFG
+  | GreenFG
+  | BlueFG
+  | RedBG
+  | GreenBG
+  | BlueBG
+
+let with_ansi ansis s =
+  let convert = function
+    | Bold -> "1"
+    | Italic -> "3"
+    | Underline -> "4"
+    | Blink -> "5"
+    | RedFG -> "31"
+    | GreenFG -> "32"
+    | BlueFG -> "34"
+    | RedBG -> "41"
+    | GreenBG -> "42"
+    | BlueBG -> "44"
+  in
+  "\027["
+  ^ String.concat ~sep:";" (List.map ~f:convert ansis)
+  ^ "m"
+  ^ s
+  ^ "\027[0m"
+;;
+
 let repeat s n = String.concat (List.init n ~f:(Fn.const s))
 
 let print_table ~header:(ch, eh, kh) ~stringify lst =
@@ -18,12 +50,15 @@ let print_table ~header:(ch, eh, kh) ~stringify lst =
           else (x ^ " " ^ current) :: rest)
   in
   let rows =
+    let mapper s =
+      s
+      |> List.concat_map ~f:String.split_lines
+      |> List.concat_map ~f:(break w1)
+    in
     List.map
       ~f:(fun x ->
         let s1, s2, s3 = stringify x in
-        ( List.concat_map ~f:(break w1) s1
-        , List.concat_map ~f:(break w2) s2
-        , List.concat_map ~f:(break w3) s3 ))
+        mapper s1, mapper s2, mapper s3)
       lst
   in
   let print_seps left mid right =
