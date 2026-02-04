@@ -10,10 +10,11 @@ bug-reports: "https://github.com/advay168/part-ii-project-code/issues"
 depends: [
   "dune" {>= "3.20"}
   "ocaml" {>= "5.3"}
-  "base"
-  "cmdliner"
-  "menhir"
-  "ppx_jane"
+  "base" {>= "0.17"}
+  "cmdliner" {>= "2.0"}
+  "menhir" {>= "20250912"}
+  "ppx_jane" {>= "0.17"}
+  "wcwidth" {>= "1.0"}
   "odoc" {with-doc}
 ]
 build: [

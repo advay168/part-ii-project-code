@@ -10,7 +10,7 @@ let test_string str =
   |> Stdio.print_string;
   Stdio.print_string " --> ";
   Eval.eval ~debug:false ~source:str parsed
-  |> Value.string_of_t
+  |> Value.to_string
   |> Stdio.print_endline
 ;;
 

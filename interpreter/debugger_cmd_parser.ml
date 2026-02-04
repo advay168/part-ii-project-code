@@ -1,6 +1,7 @@
 open! Base
 
 type cmd =
+  | Help
   | Breakpoint of (int * int)
   | Continue
   | Where
@@ -8,7 +9,6 @@ type cmd =
   | Nop
   | ShowState
   | Step
-  | Help
 
 let help_text =
   {|
@@ -23,17 +23,12 @@ Help for debugger commands:
 |}
 ;;
 
-let parse_step s =
-  let re = Str.regexp {|^\(s\|step\)$|} in
-  Option.some_if (Str.string_match re s 0) Step
-;;
-
 let parse_help s =
   let re = Str.regexp {|^\(h\|help\|?\)$|} in
   Option.some_if (Str.string_match re s 0) Help
 ;;
 
-let parse_bp s =
+let parse_breakpoint s =
   let re =
     Str.regexp {|^\(b\|bp\|break\|breakpoint\) \([0-9]*\):\([0-9]*\)$|}
   in
@@ -43,13 +38,6 @@ let parse_bp s =
       (Breakpoint
          ( Int.of_string (Str.matched_group 2 s)
          , Int.of_string (Str.matched_group 3 s) ))
-  else None
-;;
-
-let parse_inspect s =
-  let re = Str.regexp {|^\(i\|inspect\) \(.*\)$|} in
-  if Str.string_match re s 0
-  then Some (Inspect (Str.matched_group 2 s))
   else None
 ;;
 
@@ -63,24 +51,36 @@ let parse_where s =
   Option.some_if (Str.string_match re s 0) Where
 ;;
 
+let parse_inspect s =
+  let re = Str.regexp {|^\(i\|inspect\) \(.*\)$|} in
+  if Str.string_match re s 0
+  then Some (Inspect (Str.matched_group 2 s))
+  else None
+;;
+
 let parse_nop s =
   let re = Str.regexp {|^ *$|} in
   Option.some_if (Str.string_match re s 0) Nop
 ;;
 
-let parse_showstate s =
+let parse_show_state s =
   let re = Str.regexp {|^\(show\|state\|cek\)$|} in
   Option.some_if (Str.string_match re s 0) ShowState
 ;;
 
+let parse_step s =
+  let re = Str.regexp {|^\(s\|step\)$|} in
+  Option.some_if (Str.string_match re s 0) Step
+;;
+
 let parse s =
-  [ parse_bp
-  ; parse_inspect
+  [ parse_help
+  ; parse_breakpoint
   ; parse_continue
   ; parse_where
+  ; parse_inspect
   ; parse_nop
-  ; parse_showstate
-  ; parse_help
+  ; parse_show_state
   ; parse_step
   ]
   |> List.map ~f:(fun f -> f s)

@@ -1,4 +1,5 @@
 type cmd =
+  | Help
   | Breakpoint of (int * int)
   | Continue
   | Where
@@ -6,7 +7,6 @@ type cmd =
   | Nop
   | ShowState
   | Step
-  | Help
 
 val help_text : string
 val parse : string -> cmd
