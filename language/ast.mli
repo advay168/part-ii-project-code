@@ -51,3 +51,11 @@ and handler =
 [@@deriving sexp_of]
 
 val mark_breakpoint : int * int -> expr -> bool
+
+module Make_to_string : functor
+    (_ : sig
+       val source : string
+     end)
+    -> sig
+  val to_string : _ annotated -> string
+end

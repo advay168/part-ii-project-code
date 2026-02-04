@@ -22,7 +22,7 @@ module rec Value : sig
     | VContinuation of Main.kontinuation list
 
   val sexp_of_t : t -> Sexp.t
-  val string_of_t : t -> string
+  val to_string : t -> string
 end = struct
   type t =
     | VInt of int
@@ -33,18 +33,18 @@ end = struct
     | VFunBuiltin of Builtins.t
     | VContinuation of Main.kontinuation list
 
-  let rec string_of_t = function
+  let rec to_string = function
     | VInt int -> Int.to_string int
     | VBool bool -> Bool.to_string bool
     | VUnit -> "()"
-    | VTup (e1, e2) -> "(" ^ string_of_t e1 ^ ", " ^ string_of_t e2 ^ ")"
+    | VTup (e1, e2) -> "(" ^ to_string e1 ^ ", " ^ to_string e2 ^ ")"
     | VFun _ -> "<fun>"
     | VContinuation _ -> "<kont>"
     | VFunBuiltin Fst -> "<builtin: fst>"
     | VFunBuiltin Snd -> "<builtin: snd>"
   ;;
 
-  let sexp_of_t t = Sexp.Atom (string_of_t t)
+  let sexp_of_t t = Sexp.Atom (to_string t)
 end
 
 and Main : sig
@@ -78,7 +78,7 @@ end = struct
 
   type env = Value.t Env.t
 
-  let string_of_env = Env.string_of_t Value.string_of_t
+  let string_of_env = Env.string_of_t Value.to_string
   let sexp_of_env env = env |> string_of_env |> Sexp.Atom
 
   type kontinuation = kontinuation' Ast.annotated
@@ -255,6 +255,59 @@ end = struct
     |> Env.set ~hidden:true "snd" (Value.VFunBuiltin Snd)
   ;;
 
+  let rec translate_kont ~source (k : kontinuation) =
+    let op_to_string = function
+      | Ast.IAdd -> "+"
+      | IMul -> "*"
+      | IEql -> "="
+      | BAnd -> "&&"
+      | BOr -> "||"
+      | EMkTuple -> ","
+    in
+    let module Expr =
+      Ast.Make_to_string (struct
+        let source = source
+      end)
+    in
+    let hole = "⬤" in
+    (* TODO: Show [env]. *)
+    match k.x with
+    | CNot Hole -> [%string "not *"]
+    | CBinOp1 (Hole, op, expr, _env) ->
+      [%string "%{hole} %{op_to_string op} %{expr#Expr}"]
+    | CBinOp2 (value, op, Hole) ->
+      [%string "%{value#Value} %{op_to_string op} %{hole}"]
+    | CIf (Hole, expr1, expr2, _env) ->
+      [%string "if %{hole} then %{expr1#Expr} else %{expr2#Expr}"]
+    | CLet (var, Hole, expr, _env) ->
+      [%string "let %{var} := %{hole} in\n%{expr#Expr}"]
+    | CLetRec (var, Hole, expr, _env) ->
+      [%string "let %{var} := %{hole} in\n%{expr#Expr}"]
+    | CApply1 (Hole, expr, _env) -> [%string "%{hole}@%{expr#Expr}"]
+    | CApply2 (func, Hole) -> [%string "%{func#Value}@%{hole}"]
+    | CPerform (eff, Hole, ks) ->
+      let captured_ks =
+        ks
+        |> List.rev
+        |> List.map ~f:(translate_kont ~source)
+        |> String.concat ~sep:", "
+        |> String.tr ~target:'\n' ~replacement:' '
+      in
+      let captured_ks =
+        if Wcwidth.wcswidth captured_ks < 120
+        then captured_ks
+        else Int.to_string (List.length ks) ^ " konts"
+      in
+      [%string "perform (%{eff} %{hole}) <%{captured_ks}>"]
+    | CHandler (handlers, _env) ->
+      let handled_effects =
+        handlers
+        |> List.map ~f:(fun handler -> handler.eff)
+        |> String.concat ~sep:", "
+      in
+      [%string "handler <%{handled_effects}>"]
+  ;;
+
   let stringify source { c; e; k } =
     let string_of_expr_or_val = function
       | Expr expr ->
@@ -262,21 +315,11 @@ end = struct
         ^
         let _, s, _ = Ast.split_source_by_expr source expr in
         s
-      | Value value -> "V: " ^ Value.string_of_t value
+      | Value value -> "V: " ^ Value.to_string value
     in
-    let stringify_k k =
-      [ "[" ]
-      @ (k
-         |> List.map ~f:(fun cont ->
-           cont
-           |> sexp_of_kontinuation
-           |> Sexp.to_string_hum
-           |> String.tr ~target:'\n' ~replacement:' '
-           |> fun x -> x ^ ","))
-      @ [ "]" ]
-    in
+    let string_of_k = List.map ~f:(translate_kont ~source) in
     Language.Ast.without_showing_anns (fun () ->
-      [ string_of_expr_or_val c ], [ string_of_env e ], stringify_k k)
+      [ string_of_expr_or_val c ], [ string_of_env e ], string_of_k k)
   ;;
 
   let rec driver ~history ~break_immediately (state : t) =
@@ -350,10 +393,18 @@ end = struct
             Stdio.print_endline "Variable not present";
             debugger ~source state
           | Some value ->
-            value
-            |> Value.string_of_t
-            |> Printf.sprintf "`%s`: %s" var
-            |> Stdio.print_endline;
+            begin match value with
+            | VContinuation konts ->
+              konts
+              |> List.map ~f:(translate_kont ~source)
+              |> String.concat ~sep:"\n--------------------------\n"
+              |> Stdio.print_endline
+            | _ ->
+              value
+              |> Value.to_string
+              |> Printf.sprintf "`%s`: %s" var
+              |> Stdio.print_endline
+            end;
             debugger ~source state
         end
       end

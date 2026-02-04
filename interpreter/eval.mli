@@ -1,7 +1,7 @@
 module Value : sig
   type t
 
-  val string_of_t : t -> string
+  val to_string : t -> string
 end
 
 module Main : sig

@@ -114,3 +114,16 @@ let rec mark_breakpoint loc (e : expr) : bool =
     true
   end
 ;;
+
+module Make_to_string =
+functor
+  (M : sig
+     val source : string
+   end)
+  ->
+  struct
+    let to_string expr =
+      let _, s, _ = split_source_by_expr M.source expr in
+      s
+    ;;
+  end

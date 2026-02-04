@@ -33,6 +33,12 @@ let with_ansi ansis s =
 ;;
 
 let repeat s n = String.concat (List.init n ~f:(Fn.const s))
+let utf_width = Wcwidth.wcswidth
+
+let utf_pad_right ~pad width s =
+  let w = utf_width s in
+  s ^ repeat pad (width - w)
+;;
 
 let print_table ~header:(ch, eh, kh) ~stringify lst =
   let w = 140 in
@@ -45,20 +51,21 @@ let print_table ~header:(ch, eh, kh) ~stringify lst =
         match lst with
         | [] -> assert false
         | current :: rest ->
-          if String.length current + String.length x >= w
+          if utf_width current + utf_width x >= w
           then x :: current :: rest
           else (x ^ " " ^ current) :: rest)
   in
   let rows =
-    let mapper s =
+    let mapper w s =
       s
+      |> List.intersperse ~sep:(repeat "─" (w - 1))
       |> List.concat_map ~f:String.split_lines
-      |> List.concat_map ~f:(break w1)
+      |> List.concat_map ~f:(break w)
     in
     List.map
       ~f:(fun x ->
         let s1, s2, s3 = stringify x in
-        mapper s1, mapper s2, mapper s3)
+        mapper w1 s1, mapper w2 s2, mapper w3 s3)
       lst
   in
   let print_seps left mid right =
@@ -72,7 +79,11 @@ let print_table ~header:(ch, eh, kh) ~stringify lst =
   let print_row b row =
     let go =
       fun (c, e, k) ->
-      Stdlib.Printf.printf "│ %-*s │ %-*s │ %-*s │\n" w1 c w2 e w3 k
+      Stdlib.Printf.printf
+        "│ %s │ %s │ %s │\n"
+        (utf_pad_right ~pad:" " w1 c)
+        (utf_pad_right ~pad:" " w2 e)
+        (utf_pad_right ~pad:" " w3 k)
     in
     let[@tail_mod_cons] rec zip3_longest lst =
       let uncons = function
