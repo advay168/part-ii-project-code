@@ -78,10 +78,42 @@ and handler =
   }
 [@@deriving sexp_of]
 
-let within (line, col) ((startpos, endpos) : span) =
-  let sl, sc = startpos.pos_lnum, startpos.pos_cnum - startpos.pos_bol + 1 in
-  let el, ec = endpos.pos_lnum, endpos.pos_cnum - endpos.pos_bol + 1 in
+let within (line, col) (span : span) =
+  let (sl, sc), (el, ec) = linecol_of_span span in
   sl <= line && line <= el && (sl <> el || (sc <= col && col < ec))
+;;
+
+let rec marker (f : expr' -> bool) (e : expr) =
+  let count =
+    if f e.x
+    then (
+      e.breakpoint <- true;
+      1)
+    else 0
+  in
+  count
+  + begin match e.x with
+  | MkInt _ -> 0
+  | MkBool _ -> 0
+  | MkUnit -> 0
+  | MkBinOp (e1, _, e2) -> marker f e1 + marker f e2
+  | MkNot e -> marker f e
+  | MkIf (e1, e2, e3) -> marker f e1 + marker f e2 + marker f e3
+  | MkVar _ -> 0
+  | MkLet (_, e1, e2) -> marker f e1 + marker f e2
+  | MkFun (_, e) -> marker f e
+  | MkApply (e1, e2) -> marker f e1 + marker f e2
+  | MkPerform (_, e) -> marker f e
+  | MkHandle (e, hs) ->
+    marker f e + List.sum (module Int) ~f:(fun h -> marker f h.body) hs
+  end
+;;
+
+let mark_perform name =
+  marker
+  @@ function
+  | MkPerform (eff, _) -> String.equal name eff
+  | _ -> false
 ;;
 
 let rec mark_breakpoint loc (e : expr) : bool =

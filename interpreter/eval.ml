@@ -291,10 +291,11 @@ end = struct
         |> List.rev
         |> List.map ~f:(translate_kont ~source)
         |> String.concat ~sep:", "
+        |> String.tr ~target:'\r' ~replacement:' '
         |> String.tr ~target:'\n' ~replacement:' '
       in
       let captured_ks =
-        if Wcwidth.wcswidth captured_ks < 120
+        if Wcwidth.wcswidth captured_ks < 50
         then captured_ks
         else Int.to_string (List.length ks) ^ " konts"
       in
@@ -381,9 +382,15 @@ end = struct
             (* Printf.sprintf "%d:%d..%d:%d" sl sc el ec |> Stdio.print_endline *)
           in
           debugger ~source state
-        | Breakpoint pos ->
+        | BreakpointLoc pos ->
           let success = Ast.mark_breakpoint pos full_expr in
           if success
+          then Stdio.print_endline "Breakpoint set."
+          else Stdio.print_endline "Could not set breakpoint.";
+          debugger ~source state
+        | BreakpointEff eff ->
+          let count = Ast.mark_perform eff full_expr in
+          if count > 0
           then Stdio.print_endline "Breakpoint set."
           else Stdio.print_endline "Could not set breakpoint.";
           debugger ~source state
