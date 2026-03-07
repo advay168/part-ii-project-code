@@ -266,3 +266,19 @@ let%expect_test "Test location tracking" =
      <1:1..3:25>)
     |}]
 ;;
+
+let%expect_test "Test setting breakpoint by effect name" =
+  Language.Ast.show_anns := true;
+  let expr =
+    Language.Parser.parse
+      ~filename:"test"
+      "perform (Eff 123) + perform (Eff 123)"
+  in
+  ignore (Language.Ast.mark_perform "Eff" expr);
+  expr |> Language.Ast.sexp_of_expr |> Sexp.to_string_hum |> Stdio.print_endline;
+  [%expect
+    {|
+    (MkBinOp (MkPerform Eff (MkInt 123 <1:14..1:17>) <#1:1..1:18>) IAdd
+     (MkPerform Eff (MkInt 123 <1:34..1:37>) <#1:21..1:38>) <1:1..1:38>)
+    |}]
+;;

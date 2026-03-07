@@ -2,7 +2,8 @@ open! Base
 
 type cmd =
   | Help
-  | Breakpoint of (int * int)
+  | BreakpointLoc of (int * int)
+  | BreakpointEff of string
   | Continue
   | Where
   | Inspect of string
@@ -13,13 +14,14 @@ type cmd =
 let help_text =
   {|
 Help for debugger commands:
-- b/bp/break/breakpoint line:col -> Set breakpoint at location.
-- r/run/c/continue               -> Continue without debugging.
-- w/where                        -> Highlight the source location of the current term.
-- show/state/cek                 -> Print CEK state.
-- i/inspect var                  -> Print the value of variable `var`.
-- s/step                         -> Step the evaluation.
-- h/help                         -> Print this help text.
+- b/bp/break/breakpoint <line>:<col> -> Set breakpoint at location.
+- b/bp/break/breakpoint eff <name>   -> Set breakpoint when effect <name> is performed.
+- r/run/c/continue                   -> Continue without debugging.
+- w/where                            -> Highlight the source location of the current term.
+- show/state/cek                     -> Print CEK state.
+- i/inspect <var>                    -> Print the value of variable <var>.
+- s/step                             -> Step the evaluation.
+- h/help                             -> Print this help text.
 |}
 ;;
 
@@ -28,16 +30,23 @@ let parse_help s =
   Option.some_if (Str.string_match re s 0) Help
 ;;
 
-let parse_breakpoint s =
+let parse_breakpoint_loc s =
   let re =
     Str.regexp {|^\(b\|bp\|break\|breakpoint\) \([0-9]*\):\([0-9]*\)$|}
   in
   if Str.string_match re s 0
   then
     Some
-      (Breakpoint
+      (BreakpointLoc
          ( Int.of_string (Str.matched_group 2 s)
          , Int.of_string (Str.matched_group 3 s) ))
+  else None
+;;
+
+let parse_breakpoint_eff s =
+  let re = Str.regexp {|^\(b\|bp\|break\|breakpoint\) eff \([a-zA-z]*\)$|} in
+  if Str.string_match re s 0
+  then Some (BreakpointEff (Str.matched_group 2 s))
   else None
 ;;
 
@@ -75,7 +84,8 @@ let parse_step s =
 
 let parse s =
   [ parse_help
-  ; parse_breakpoint
+  ; parse_breakpoint_loc
+  ; parse_breakpoint_eff
   ; parse_continue
   ; parse_where
   ; parse_inspect
