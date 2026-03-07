@@ -311,7 +311,7 @@ end = struct
   let stringify source { c; e; k } =
     let string_of_expr_or_val = function
       | Expr expr ->
-        "E: "
+        "T: "
         ^
         let _, s, _ = Ast.split_source_by_expr source expr in
         s
