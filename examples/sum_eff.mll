@@ -11,8 +11,8 @@ let numsGen := fun _ ->
 end
 in
 handle
-  numsGen@()
+  numsGen ()
 with
-  | Yield, v, k -> v + k@()
+  | Yield, v, k -> v + k ()
 end
 end

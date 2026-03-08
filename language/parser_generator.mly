@@ -16,7 +16,7 @@
 %token <string> IDENT
 %token LET DEF_EQUALS IN
 
-%token FUN ARROW APPLY
+%token FUN ARROW
 
 %token PERFORM
 %token HANDLE WITH BAR
@@ -33,6 +33,8 @@
 
 %left PLUS
 %left MULT
+
+%nonassoc PERFORM LPAREN LET INT IF IDENT FUN BOOL
 
 %left APPLY
 
@@ -58,7 +60,7 @@ expr:
   | name = IDENT                                                 { make $loc (MkVar     (name)            ) }
   | LET; name = IDENT; DEF_EQUALS; e1 = expr; IN; e2 = expr; END { make $loc (MkLet     (name, e1, e2)    ) }
   | FUN; name = IDENT; ARROW; e = expr; END                      { make $loc (MkFun     (name, e)         ) }
-  | e1 = expr; APPLY; e2 = expr                                  { make $loc (MkApply   (e1, e2)          ) }
+  | e1 = expr; e2 = expr %prec APPLY                                  { make $loc (MkApply   (e1, e2)          ) }
   | PERFORM; LPAREN; eff = IDENT; e = expr; RPAREN               { make $loc (MkPerform (eff, e)          ) }
   | HANDLE; e1 = expr; WITH; hs = nonempty_list(handler); END    { make $loc (MkHandle  (e1, hs)          ) }
   | LPAREN; e = expr; RPAREN                                     { make $loc (e.x                         ) }
