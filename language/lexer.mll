@@ -45,7 +45,6 @@ rule read =
   | "in" { IN }
   | "fun" { FUN }
   | "->" { ARROW }
-  | "@" { APPLY }
   | "perform" { PERFORM }
   | "handle" { HANDLE }
   | "with" { WITH }

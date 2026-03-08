@@ -74,9 +74,9 @@ let%expect_test "Test tuples" =
   test_string "(1 + 1, 3)";
   [%expect
     "(MkBinOp (MkBinOp (MkInt 1) IAdd (MkInt 1)) EMkTuple (MkInt 3)) --> (2, 3)"];
-  test_string "fst@(1, 3)";
+  test_string "fst (1, 3)";
   [%expect "(MkApply (MkVar fst) (MkBinOp (MkInt 1) EMkTuple (MkInt 3))) --> 1"];
-  test_string "snd@(1, 3)";
+  test_string "snd (1, 3)";
   [%expect "(MkApply (MkVar snd) (MkBinOp (MkInt 1) EMkTuple (MkInt 3))) --> 3"]
 ;;
 
@@ -101,7 +101,7 @@ let%expect_test "Functions" =
   test_string "let f := fun x -> x + 1 end in f end";
   [%expect
     {| (MkLet f (MkFun x (MkBinOp (MkVar x) IAdd (MkInt 1))) (MkVar f)) --> <fun> |}];
-  test_string "let f := fun x -> x + 1 end in f@123 end";
+  test_string "let f := fun x -> x + 1 end in f 123 end";
   [%expect
     {|
     (MkLet f (MkFun x (MkBinOp (MkVar x) IAdd (MkInt 1)))
@@ -112,9 +112,9 @@ let%expect_test "Functions" =
   test_string
     {|
       let fact := fun x ->
-        if x = 0 then 1 else x * fact@(x+-1) end
+        if x = 0 then 1 else x * fact (x+-1) end
       end in
-      fact@5
+      fact 5
       end
     |};
   [%expect
@@ -129,9 +129,9 @@ let%expect_test "Functions" =
   test_string
     {|
       let addn := fun x -> fun y -> x+y end end in
-      let add5 := addn@5 in
-      let add6 := addn@6 in
-      add5@10 + add6@20
+      let add5 := addn 5 in
+      let add6 := addn 6 in
+      add5 10 + add6 20
       end
       end
       end
@@ -185,20 +185,20 @@ let%expect_test "Exceptions" =
 ;;
 
 let%expect_test "Single/Multi-shot Effects" =
-  test_string "handle 456 with | Eff, arg, k -> k@123 end";
+  test_string "handle 456 with | Eff, arg, k -> k 123 end";
   [%expect
     {|
     (MkHandle (MkInt 456)
      (((eff Eff) (arg arg) (kont k) (body (MkApply (MkVar k) (MkInt 123)))))) --> 456
     |}];
-  test_string "handle perform (Eff 456) with | Eff, arg, k -> k@123 end";
+  test_string "handle perform (Eff 456) with | Eff, arg, k -> k 123 end";
   [%expect
     {|
     (MkHandle (MkPerform Eff (MkInt 456))
      (((eff Eff) (arg arg) (kont k) (body (MkApply (MkVar k) (MkInt 123)))))) --> 123
     |}];
   test_string
-    "handle perform (Eff 456) with | Eff, arg, k -> if arg = 456 then k@123 \
+    "handle perform (Eff 456) with | Eff, arg, k -> if arg = 456 then k 123 \
      else perform (Eff 1) end end";
   [%expect
     {|
@@ -209,7 +209,7 @@ let%expect_test "Single/Multi-shot Effects" =
          (MkApply (MkVar k) (MkInt 123)) (MkPerform Eff (MkInt 1))))))) --> 123
     |}];
   test_string
-    "handle 2 * perform (Eff 456) with | Eff, arg, k -> k@123 + k@789 end";
+    "handle 2 * perform (Eff 456) with | Eff, arg, k -> k 123 + k 789 end";
   [%expect
     {|
     (MkHandle (MkBinOp (MkInt 2) IMul (MkPerform Eff (MkInt 456)))
@@ -219,7 +219,7 @@ let%expect_test "Single/Multi-shot Effects" =
          (MkApply (MkVar k) (MkInt 789))))))) --> 1824
     |}];
   test_string
-    "handle perform (Eff 456) + perform (Eff 456) with | Eff, arg, k -> k@123 \
+    "handle perform (Eff 456) + perform (Eff 456) with | Eff, arg, k -> k 123 \
      end";
   [%expect
     {|
@@ -230,15 +230,15 @@ let%expect_test "Single/Multi-shot Effects" =
 ;;
 
 let%expect_test "Named Effects" =
-  test_string "handle perform (Eff1 ()) with | Eff1, arg, k -> k@123 end";
+  test_string "handle perform (Eff1 ()) with | Eff1, arg, k -> k 123 end";
   [%expect
     {|
     (MkHandle (MkPerform Eff1 (MkUnit))
      (((eff Eff1) (arg arg) (kont k) (body (MkApply (MkVar k) (MkInt 123)))))) --> 123
     |}];
   test_string
-    "handle handle perform (Eff2 ()) with | Eff1, arg1, k1 -> k1@123 end with \
-     | Eff2, arg2, k2 -> k2@456 end";
+    "handle handle perform (Eff2 ()) with | Eff1, arg1, k1 -> k1 123 end with \
+     | Eff2, arg2, k2 -> k2 456 end";
   [%expect
     {|
     (MkHandle
