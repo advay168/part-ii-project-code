@@ -52,6 +52,7 @@ and handler =
 
 val mark_breakpoint : int * int -> expr -> bool
 val mark_perform : string -> expr -> int
+val mark_fun_app : string -> expr -> int
 
 module Make_to_string : functor
     (_ : sig

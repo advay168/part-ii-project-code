@@ -2,6 +2,7 @@ type cmd =
   | Help
   | BreakpointLoc of (int * int)
   | BreakpointEff of string
+  | BreakpointFun of string
   | Continue
   | Where
   | Inspect of string

@@ -4,6 +4,7 @@ type cmd =
   | Help
   | BreakpointLoc of (int * int)
   | BreakpointEff of string
+  | BreakpointFun of string
   | Continue
   | Where
   | Inspect of string
@@ -14,14 +15,15 @@ type cmd =
 let help_text =
   {|
 Help for debugger commands:
-- b/bp/break/breakpoint <line>:<col> -> Set breakpoint at location.
-- b/bp/break/breakpoint eff <name>   -> Set breakpoint when effect <name> is performed.
-- r/run/c/continue                   -> Continue without debugging.
-- w/where                            -> Highlight the source location of the current term.
-- show/state/cek                     -> Print CEK state.
-- i/inspect <var>                    -> Print the value of variable <var>.
-- s/step                             -> Step the evaluation.
-- h/help                             -> Print this help text.
+- b/bp/break/breakpoint loc <line>:<col> -> Set breakpoint at location.
+- b/bp/break/breakpoint eff <name>       -> Set breakpoint when effect <name> is performed.
+- b/bp/break/breakpoint fun <name>       -> Set breakpoint when function <name> is going to be applied.
+- r/run/c/continue                       -> Continue without debugging.
+- w/where                                -> Highlight the source location of the current term.
+- show/state/cek                         -> Print CEK state.
+- i/inspect <var>                        -> Print the value of variable <var>.
+- s/step                                 -> Step the evaluation.
+- h/help                                 -> Print this help text.
 |}
 ;;
 
@@ -43,10 +45,23 @@ let parse_breakpoint_loc s =
   else None
 ;;
 
+let ident_regex = "[a-zA-z_][0-9a-zA-z_]*"
+
 let parse_breakpoint_eff s =
-  let re = Str.regexp {|^\(b\|bp\|break\|breakpoint\) eff \([a-zA-z]*\)$|} in
+  let re =
+    Str.regexp ({|^\(b\|bp\|break\|breakpoint\) eff \(|} ^ ident_regex ^ {|\)$|})
+  in
   if Str.string_match re s 0
   then Some (BreakpointEff (Str.matched_group 2 s))
+  else None
+;;
+
+let parse_breakpoint_fun s =
+  let re =
+    Str.regexp ({|^\(b\|bp\|break\|breakpoint\) fun \(|} ^ ident_regex ^ {|\)$|})
+  in
+  if Str.string_match re s 0
+  then Some (BreakpointFun (Str.matched_group 2 s))
   else None
 ;;
 
@@ -61,7 +76,7 @@ let parse_where s =
 ;;
 
 let parse_inspect s =
-  let re = Str.regexp {|^\(i\|inspect\) \(.*\)$|} in
+  let re = Str.regexp ({|^\(i\|inspect\) \($|} ^ ident_regex ^ {|\)$|}) in
   if Str.string_match re s 0
   then Some (Inspect (Str.matched_group 2 s))
   else None
@@ -85,6 +100,7 @@ let parse_step s =
 let parse s =
   [ parse_help
   ; parse_breakpoint_loc
+  ; parse_breakpoint_fun
   ; parse_breakpoint_eff
   ; parse_continue
   ; parse_where

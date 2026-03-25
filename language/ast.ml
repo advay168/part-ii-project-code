@@ -116,6 +116,13 @@ let mark_perform name =
   | _ -> false
 ;;
 
+let mark_fun_app name =
+  marker
+  @@ function
+  | MkApply ({ x = MkVar func; _ }, _) -> String.equal name func
+  | _ -> false
+;;
+
 let rec mark_breakpoint loc (e : expr) : bool =
   if not (within loc e.span)
   then false
