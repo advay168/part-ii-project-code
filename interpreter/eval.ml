@@ -394,6 +394,12 @@ end = struct
           then Stdio.print_endline "Breakpoint set."
           else Stdio.print_endline "Could not set breakpoint.";
           debugger ~source state
+        | BreakpointFun fun_name ->
+          let count = Ast.mark_fun_app fun_name full_expr in
+          if count > 0
+          then Stdio.print_endline "Breakpoint set."
+          else Stdio.print_endline "Could not set breakpoint.";
+          debugger ~source state
         | Inspect var -> begin
           match Env.get var cek.e with
           | None ->
