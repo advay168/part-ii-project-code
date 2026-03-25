@@ -1,5 +1,5 @@
 let state_handler := fun f ->
-  handle f () with
+  handle perform (Return (f ())) with
     | Return, v, _ -> fun _ -> v end
     | Get, _, k -> fun s -> k s s end
     | Set, val, k -> fun s -> k () val end
@@ -10,7 +10,7 @@ in
     let x := perform (Get ()) in
     let _ := perform (Set x + 123) in
     let y := perform (Get ()) in
-    perform (Return y)
+    y
     end
     end
     end
