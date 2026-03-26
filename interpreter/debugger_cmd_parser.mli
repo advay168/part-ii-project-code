@@ -8,7 +8,8 @@ type cmd =
   | Inspect of string
   | Nop
   | ShowState
-  | Step
+  | StepFwd of int
+  | StepBck of int
 
 val help_text : string
 val parse : string -> cmd

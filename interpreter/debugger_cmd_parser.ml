@@ -10,7 +10,8 @@ type cmd =
   | Inspect of string
   | Nop
   | ShowState
-  | Step
+  | StepFwd of int
+  | StepBck of int
 
 let help_text =
   {|
@@ -22,7 +23,8 @@ Help for debugger commands:
 - w/where                                -> Highlight the source location of the current term.
 - show/state/cek                         -> Print CEK state.
 - i/inspect <var>                        -> Print the value of variable <var>.
-- s/step                                 -> Step the evaluation.
+- s/step <num>? (default 1)              -> Step the evaluation forwards <num> times.
+- r/rev <num>? (default 1)               -> Step the evaluation in reverse <num> times.
 - h/help                                 -> Print this help text.
 |}
 ;;
@@ -92,9 +94,26 @@ let parse_show_state s =
   Option.some_if (Str.string_match re s 0) ShowState
 ;;
 
-let parse_step s =
-  let re = Str.regexp {|^\(s\|step\)$|} in
-  Option.some_if (Str.string_match re s 0) Step
+let parse_step_fwd s =
+  let re = Str.regexp {|^\(s\|step\) ?\([0-9]+\)?$|} in
+  if Str.string_match re s 0
+  then (
+    let num_steps =
+      Option.try_with (fun () -> Int.of_string (Str.matched_group 2 s))
+    in
+    Some (StepFwd (Option.value ~default:1 num_steps)))
+  else None
+;;
+
+let parse_step_bck s =
+  let re = Str.regexp {|^\(r\|rev\) ?\([0-9]+\)?$|} in
+  if Str.string_match re s 0
+  then (
+    let num_steps =
+      Option.try_with (fun () -> Int.of_string (Str.matched_group 2 s))
+    in
+    Some (StepBck (Option.value ~default:1 num_steps)))
+  else None
 ;;
 
 let parse s =
@@ -107,7 +126,8 @@ let parse s =
   ; parse_inspect
   ; parse_nop
   ; parse_show_state
-  ; parse_step
+  ; parse_step_fwd
+  ; parse_step_bck
   ]
   |> List.map ~f:(fun f -> f s)
   |> List.find ~f:Option.is_some
