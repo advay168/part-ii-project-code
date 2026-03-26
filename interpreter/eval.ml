@@ -1,8 +1,5 @@
 open! Base
 open Language
-module Effect = Stdlib.Effect
-open Effect
-open Effect.Deep
 
 module Builtins = struct
   type t =
@@ -101,8 +98,6 @@ end = struct
     ; e : env
     ; k : kontinuation list
     }
-
-  type _ Effect.t += Breakpoint : t -> bool Effect.t
 
   let as_int = function
     | Value.VInt int -> int
@@ -323,52 +318,78 @@ end = struct
       [ string_of_expr_or_val c ], [ string_of_env e ], string_of_k k)
   ;;
 
-  let rec driver ~history ~break_immediately (state : t) =
-    let break_immediately =
-      if break_immediately then perform (Breakpoint state) else false
+  type history = t list
+
+  exception Breakpoint of history * t
+
+  (** [times] refers to the number of times to run before breakpointing. 
+      [ignore_bp] means to not trigger any AST breakpoints on this step. Useful to continue execution from the debugger.
+   *)
+  let rec driver ?(ignore_bp = false) ~history:old_history ~times state =
+    let times =
+      match times with
+      | Some 0 when not ignore_bp -> raise (Breakpoint (old_history, state))
+      | Some n -> Some (n - 1)
+      | None -> None
     in
-    let history = state :: history in
+    let history = state :: old_history in
     match state with
     | { c = Value v; e = _; k = [] } -> v, history
-    | { c = Expr { breakpoint = true; _ }; _ } ->
+    | { c = Expr { breakpoint = true; _ }; _ } when not ignore_bp ->
       Stdio.print_endline "Breakpoint hit";
-      let break_immediately = perform (Breakpoint state) in
-      driver ~history ~break_immediately (step state)
-    | _ -> driver ~history ~break_immediately (step state)
+      raise (Breakpoint (old_history, state))
+    | _ -> driver ~history ~times (step state)
   ;;
 
   module Debugger = struct
-    type state =
-      | Stepping of
-          { cek : t
-          ; driver_k : (bool, Value.t * t list) continuation
-          ; full_expr : Ast.expr
-          }
+    type dbg_state =
+      { history : history
+      ; current_cek : t
+      ; full_expr : Ast.expr
+      }
 
     let prompt () =
       Stdio.print_string "debugger> ";
       Debugger_cmd_parser.parse (Stdio.In_channel.input_line_exn Stdio.stdin)
     ;;
 
-    let rec debugger ~source state =
+    let rec debugger ?(print_state = false) ~source state =
       match state with
-      | Stepping { cek; driver_k; full_expr } -> begin
-        match prompt () with
+      | { history; current_cek; full_expr } ->
+        if print_state
+        then
+          Util.print_table
+            ~header:("C", "E", "K")
+            ~stringify:(stringify source)
+            [ current_cek ];
+        begin match prompt () with
         | Nop -> debugger ~source state
         | Help ->
           Stdio.print_string Debugger_cmd_parser.help_text;
           debugger ~source state
-        | Continue -> continue driver_k false
-        | Step -> continue driver_k true
-        | ShowState ->
-          Util.print_table
-            ~header:("C", "E", "K")
-            ~stringify:(stringify source)
-            [ cek ];
-          debugger ~source state
+        | Continue -> driver ~ignore_bp:true ~times:None ~history current_cek
+        | StepFwd n ->
+          driver ~ignore_bp:true ~history ~times:(Some n) current_cek
+        | StepBck n ->
+          (* Pop the first n entries *)
+          let new_history = List.drop history n in
+          let new_cek =
+            (* Want the (n-1)th state *)
+            match List.nth history (n - 1) with
+            | Some cek -> cek
+            | None ->
+              Stdio.print_endline
+                "Tried to go back too far. Going back to start.";
+              List.last_exn (current_cek :: history)
+          in
+          debugger
+            ~print_state:true
+            ~source
+            { history = new_history; current_cek = new_cek; full_expr }
+        | ShowState -> debugger ~print_state:true ~source state
         | Where ->
           let () =
-            match cek.c with
+            match current_cek.c with
             | Value _ -> Stdio.print_endline "Cannot show location of value."
             | Expr expr ->
               let prefix, here, suffix = Ast.split_source_by_expr source expr in
@@ -401,7 +422,7 @@ end = struct
           else Stdio.print_endline "Could not set breakpoint.";
           debugger ~source state
         | Inspect var -> begin
-          match Env.get var cek.e with
+          match Env.get var current_cek.e with
           | None ->
             Stdio.print_endline "Variable not present";
             debugger ~source state
@@ -420,21 +441,24 @@ end = struct
             end;
             debugger ~source state
         end
-      end
+        end
     ;;
   end
 
   let eval ~debug ~source expr =
     let cek = { c = Expr expr; e = builtins_env; k = [] } in
+    let rec loop thunk =
+      try thunk () with
+      | Breakpoint (history, current_cek) ->
+        loop
+        @@ fun () ->
+        Debugger.debugger
+          ~source
+          ~print_state:true
+          { history; current_cek; full_expr = expr }
+    in
     let evaluated_value, history =
-      match driver ~history:[] ~break_immediately:debug cek with
-      | v -> v
-      | effect Breakpoint cek, driver_k ->
-        Util.print_table
-          ~header:("C", "E", "K")
-          ~stringify:(stringify source)
-          [ cek ];
-        Debugger.debugger ~source (Stepping { cek; driver_k; full_expr = expr })
+      loop (fun () -> driver ~history:[] ~times:(Option.some_if debug 0) cek)
     in
     if debug
     then (
