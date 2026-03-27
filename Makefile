@@ -25,7 +25,7 @@ examples:
 
 test:
 	$(DUNE) runtest
-	bash tests/e2e_tests.sh
+	bash tests/end_to_end.sh
 
 clean:
 	$(DUNE) clean

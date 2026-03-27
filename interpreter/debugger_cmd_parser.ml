@@ -12,6 +12,7 @@ type cmd =
   | ShowState
   | StepFwd of int
   | StepBck of int
+  | Stepover
 
 let help_text =
   {|
@@ -25,6 +26,7 @@ Help for debugger commands:
 - i/inspect <var>                        -> Print the value of variable <var>.
 - s/step <num>? (default 1)              -> Step the evaluation forwards <num> times.
 - r/rev <num>? (default 1)               -> Step the evaluation in reverse <num> times.
+- o/over                                 -> Step over evaluation of the current term.
 - h/help                                 -> Print this help text.
 |}
 ;;
@@ -116,6 +118,11 @@ let parse_step_bck s =
   else None
 ;;
 
+let parse_step_over s =
+  let re = Str.regexp {|^\(o\|over\)$|} in
+  Option.some_if (Str.string_match re s 0) Stepover
+;;
+
 let parse s =
   [ parse_help
   ; parse_breakpoint_loc
@@ -128,6 +135,7 @@ let parse s =
   ; parse_show_state
   ; parse_step_fwd
   ; parse_step_bck
+  ; parse_step_over
   ]
   |> List.map ~f:(fun f -> f s)
   |> List.find ~f:Option.is_some

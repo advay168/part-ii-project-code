@@ -10,7 +10,11 @@ type 't annotated =
 [@@deriving sexp_of]
 
 val make : Lexing.position * Lexing.position -> 'a -> 'a annotated
-val split_source_by_expr : string -> 'a annotated -> string * string * string
+
+val split_source_by_annotated
+  :  string
+  -> 'a annotated
+  -> string * string * string
 
 (** Controls whether the source location is present when converting to sexp. *)
 val show_anns : bool ref

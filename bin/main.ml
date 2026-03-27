@@ -1,7 +1,7 @@
 open! Base
-open Import
 open Cmdliner
 open Cmdliner.Term.Syntax
+include Interpreter
 
 let eval ~debug ~verbose filename code =
   let parsed_expr = Language.Parser.parse ~filename code in
