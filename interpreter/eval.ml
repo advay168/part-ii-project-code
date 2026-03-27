@@ -210,7 +210,7 @@ end = struct
         ; k =
             (match k with
              | None -> cs
-             | Some k -> { e with x = k } :: cs)
+             | Some k -> { e with x = k; breakpoint = false } :: cs)
         }
       in
       match e.x with
@@ -309,7 +309,7 @@ end = struct
       | Expr expr ->
         "T: "
         ^
-        let _, s, _ = Ast.split_source_by_expr source expr in
+        let _, s, _ = Ast.split_source_by_annotated source expr in
         s
       | Value value -> "V: " ^ Value.to_string value
     in
@@ -335,7 +335,9 @@ end = struct
     let history = state :: old_history in
     match state with
     | { c = Value v; e = _; k = [] } -> v, history
-    | { c = Expr { breakpoint = true; _ }; _ } when not ignore_bp ->
+    | { c = Value _; e = _; k = [ { breakpoint = true; _ } ] }
+    | { c = Expr { breakpoint = true; _ }; _ }
+      when not ignore_bp ->
       Stdio.print_endline "Breakpoint hit";
       raise (Breakpoint (old_history, state))
     | _ -> driver ~history ~times (step state)
@@ -368,6 +370,12 @@ end = struct
           Stdio.print_string Debugger_cmd_parser.help_text;
           debugger ~source state
         | Continue -> driver ~ignore_bp:true ~times:None ~history current_cek
+        | Stepover ->
+          begin match current_cek.k with
+          | [] -> ()
+          | k :: _ -> k.breakpoint <- true
+          end;
+          driver ~ignore_bp:true ~times:None ~history current_cek
         | StepFwd n ->
           driver ~ignore_bp:true ~history ~times:(Some n) current_cek
         | StepBck n ->
@@ -390,17 +398,26 @@ end = struct
         | Where ->
           let () =
             match current_cek.c with
-            | Value _ -> Stdio.print_endline "Cannot show location of value."
-            | Expr expr ->
-              let prefix, here, suffix = Ast.split_source_by_expr source expr in
+            | Value _ ->
+              let prefix, here, suffix =
+                Ast.split_source_by_annotated source (List.hd_exn current_cek.k)
+              in
               String.concat
                 [ prefix
                 ; here |> Util.with_ansi [ Underline; GreenFG ]
                 ; suffix
                 ]
               |> Stdio.print_endline
-            (* let (sl, sc), (el, ec) = Ast.linecol_of_span expr.span in *)
-            (* Printf.sprintf "%d:%d..%d:%d" sl sc el ec |> Stdio.print_endline *)
+            | Expr expr ->
+              let prefix, here, suffix =
+                Ast.split_source_by_annotated source expr
+              in
+              String.concat
+                [ prefix
+                ; here |> Util.with_ansi [ Underline; GreenFG ]
+                ; suffix
+                ]
+              |> Stdio.print_endline
           in
           debugger ~source state
         | BreakpointLoc pos ->
@@ -460,13 +477,7 @@ end = struct
     let evaluated_value, history =
       loop (fun () -> driver ~history:[] ~times:(Option.some_if debug 0) cek)
     in
-    if debug
-    then (
-      let history = List.rev history in
-      Util.print_table
-        ~header:("C", "E", "K")
-        ~stringify:(stringify source)
-        history);
+    ignore history;
     evaluated_value
   ;;
 end

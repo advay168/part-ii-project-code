@@ -10,6 +10,7 @@ type cmd =
   | ShowState
   | StepFwd of int
   | StepBck of int
+  | Stepover
 
 val help_text : string
 val parse : string -> cmd
