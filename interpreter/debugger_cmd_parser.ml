@@ -2,9 +2,9 @@ open! Base
 
 type cmd =
   | Help
-  | BreakpointLoc of (int * int)
-  | BreakpointEff of string
-  | BreakpointFun of string
+  | BreakpointLoc of bool * (int * int)
+  | BreakpointEff of bool * string
+  | BreakpointFun of bool * string
   | Continue
   | Where
   | Inspect of string
@@ -18,8 +18,11 @@ let help_text =
   {|
 Help for debugger commands:
 - b/bp/break/breakpoint loc <line>:<col> -> Set breakpoint at location.
+- u/unset loc <line>:<col>               -> Unset breakpoint at location.
 - b/bp/break/breakpoint eff <name>       -> Set breakpoint when effect <name> is performed.
+- u/unset eff <name>                     -> Unset breakpoint for effect <name>.
 - b/bp/break/breakpoint fun <name>       -> Set breakpoint when function <name> is going to be applied.
+- u/unset fun <name>                     -> Unset breakpoint for function <name>.
 - r/run/c/continue                       -> Continue without debugging.
 - w/where                                -> Highlight the source location of the current term.
 - show/state/cek                         -> Print CEK state.
@@ -44,16 +47,26 @@ let parse_help s =
   | _ -> None
 ;;
 
+let set_unset_bp_helper s ~set_re ~unset_re ~group_nums =
+  let r1 = run_regex ~re:set_re ~group_nums s in
+  let r2 = run_regex ~re:unset_re ~group_nums s in
+  match r1, r2 with
+  | Some x, _ -> Some (true, x)
+  | _, Some x -> Some (false, x)
+  | None, None -> None
+;;
+
 let parse_breakpoint_loc s =
   match
-    run_regex
-      ~re:{|\(b\|bp\|break\|breakpoint\) \([0-9]*\):\([0-9]*\)|}
+    set_unset_bp_helper
+      ~set_re:{|\(b\|bp\|break\|breakpoint\) \([0-9]*\):\([0-9]*\)|}
+      ~unset_re:{|\(u\|unset\) \([0-9]*\):\([0-9]*\)|}
       ~group_nums:[ 2; 3 ]
       s
   with
-  | Some [ row; col ] ->
+  | Some (set, [ row; col ]) ->
     let row, col = Int.of_string row, Int.of_string col in
-    Some (BreakpointLoc (row, col))
+    Some (BreakpointLoc (set, (row, col)))
   | _ -> None
 ;;
 
@@ -61,23 +74,25 @@ let ident_group = {|\([a-zA-z_][0-9a-zA-z_]*\)|}
 
 let parse_breakpoint_eff s =
   match
-    run_regex
-      ~re:({|\(b\|bp\|break\|breakpoint\) eff |} ^ ident_group)
+    set_unset_bp_helper
+      ~set_re:({|\(b\|bp\|break\|breakpoint\) eff |} ^ ident_group)
+      ~unset_re:({|\(u\|unset\) eff |} ^ ident_group)
       ~group_nums:[ 2 ]
       s
   with
-  | Some [ eff ] -> Some (BreakpointEff eff)
+  | Some (set, [ eff ]) -> Some (BreakpointEff (set, eff))
   | _ -> None
 ;;
 
 let parse_breakpoint_fun s =
   match
-    run_regex
-      ~re:({|\(b\|bp\|break\|breakpoint\) fun |} ^ ident_group)
+    set_unset_bp_helper
+      ~set_re:({|\(b\|bp\|break\|breakpoint\) fun |} ^ ident_group)
+      ~unset_re:({|\(u\|unset\) fun |} ^ ident_group)
       ~group_nums:[ 2 ]
       s
   with
-  | Some [ eff ] -> Some (BreakpointFun eff)
+  | Some (set, [ eff ]) -> Some (BreakpointFun (set, eff))
   | _ -> None
 ;;
 

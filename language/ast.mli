@@ -56,9 +56,9 @@ and handler =
   }
 [@@deriving sexp_of]
 
-val mark_breakpoint_loc : int * int -> expr -> bool
-val mark_perform : string -> expr -> int
-val mark_fun_app : string -> expr -> int
+val mark_breakpoint_loc : set:bool -> int * int -> expr -> bool
+val mark_perform : set:bool -> string -> expr -> int
+val mark_fun_app : set:bool -> string -> expr -> int
 
 module Make_to_string : functor
     (_ : sig

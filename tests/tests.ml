@@ -291,7 +291,7 @@ let%expect_test "Test setting breakpoint by effect name" =
       ~filename:"test"
       "perform (Eff 123) + perform (Eff 123)"
   in
-  ignore (Language.Ast.mark_perform "Eff" expr);
+  ignore (Language.Ast.mark_perform ~set:true "Eff" expr);
   expr |> Language.Ast.sexp_of_expr |> Sexp.to_string_hum |> Stdio.print_endline;
   [%expect
     {|
@@ -307,7 +307,7 @@ let%expect_test "Test setting breakpoint by function name" =
       ~filename:"test"
       "let func := fun arg -> arg end in func 123 end"
   in
-  ignore (Language.Ast.mark_fun_app "func" expr);
+  ignore (Language.Ast.mark_fun_app ~set:true "func" expr);
   expr |> Language.Ast.sexp_of_expr |> Sexp.to_string_hum |> Stdio.print_endline;
   [%expect
     {|
