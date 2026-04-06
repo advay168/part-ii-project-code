@@ -1,8 +1,8 @@
 type cmd =
   | Help
-  | BreakpointLoc of (int * int)
-  | BreakpointEff of string
-  | BreakpointFun of string
+  | BreakpointLoc of bool * (int * int)
+  | BreakpointEff of bool * string
+  | BreakpointFun of bool * string
   | Continue
   | Where
   | Inspect of string

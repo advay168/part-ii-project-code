@@ -101,11 +101,11 @@ let within (line, col) (span : span) =
   line_contained && col_contained
 ;;
 
-let rec marker (f : expr' -> bool) (e : expr) =
+let rec marker ~set (f : expr' -> bool) (e : expr) =
   let count =
     if f e.x
     then (
-      e.breakpoint <- true;
+      e.breakpoint <- set;
       1)
     else 0
   in
@@ -114,38 +114,40 @@ let rec marker (f : expr' -> bool) (e : expr) =
     | MkInt _ -> 0
     | MkBool _ -> 0
     | MkUnit -> 0
-    | MkBinOp (e1, _, e2) -> marker f e1 + marker f e2
-    | MkNot e -> marker f e
-    | MkIf (e1, e2, e3) -> marker f e1 + marker f e2 + marker f e3
+    | MkBinOp (e1, _, e2) -> marker ~set f e1 + marker ~set f e2
+    | MkNot e -> marker ~set f e
+    | MkIf (e1, e2, e3) ->
+      marker ~set f e1 + marker ~set f e2 + marker ~set f e3
     | MkVar _ -> 0
-    | MkLet (_, e1, e2) -> marker f e1 + marker f e2
-    | MkFun (_, e) -> marker f e
-    | MkApply (e1, e2) -> marker f e1 + marker f e2
-    | MkPerform (_, e) -> marker f e
+    | MkLet (_, e1, e2) -> marker ~set f e1 + marker ~set f e2
+    | MkFun (_, e) -> marker ~set f e
+    | MkApply (e1, e2) -> marker ~set f e1 + marker ~set f e2
+    | MkPerform (_, e) -> marker ~set f e
     | MkHandle (e, hs) ->
-      marker f e + List.sum (module Int) ~f:(fun h -> marker f h.body) hs
+      marker ~set f e
+      + List.sum (module Int) ~f:(fun h -> marker ~set f h.body) hs
     end
   in
   count + rec_count
 ;;
 
-let mark_perform name =
+let mark_perform ~set name =
   let var_name = Var.make name in
-  marker
+  marker ~set
   @@ function
   | MkPerform (eff, _) -> Var.equal var_name eff
   | _ -> false
 ;;
 
-let mark_fun_app name =
+let mark_fun_app ~set name =
   let var_name = Var.make name in
-  marker
+  marker ~set
   @@ function
   | MkApply ({ x = MkVar func; _ }, _) -> Var.equal var_name func
   | _ -> false
 ;;
 
-let rec mark_breakpoint_loc loc (e : expr) : bool =
+let rec mark_breakpoint_loc ~set loc (e : expr) : bool =
   if not (within loc e.span)
   then false
   else begin
@@ -155,25 +157,25 @@ let rec mark_breakpoint_loc loc (e : expr) : bool =
       | MkBool _ -> false
       | MkUnit -> false
       | MkBinOp (e1, _, e2) ->
-        mark_breakpoint_loc loc e1 || mark_breakpoint_loc loc e2
-      | MkNot e -> mark_breakpoint_loc loc e
+        mark_breakpoint_loc ~set loc e1 || mark_breakpoint_loc ~set loc e2
+      | MkNot e -> mark_breakpoint_loc ~set loc e
       | MkIf (e1, e2, e3) ->
-        mark_breakpoint_loc loc e1
-        || mark_breakpoint_loc loc e2
-        || mark_breakpoint_loc loc e3
+        mark_breakpoint_loc ~set loc e1
+        || mark_breakpoint_loc ~set loc e2
+        || mark_breakpoint_loc ~set loc e3
       | MkVar _ -> false
       | MkLet (_, e1, e2) ->
-        mark_breakpoint_loc loc e1 || mark_breakpoint_loc loc e2
-      | MkFun (_, e) -> mark_breakpoint_loc loc e
+        mark_breakpoint_loc ~set loc e1 || mark_breakpoint_loc ~set loc e2
+      | MkFun (_, e) -> mark_breakpoint_loc ~set loc e
       | MkApply (e1, e2) ->
-        mark_breakpoint_loc loc e1 || mark_breakpoint_loc loc e2
-      | MkPerform (_, e) -> mark_breakpoint_loc loc e
+        mark_breakpoint_loc ~set loc e1 || mark_breakpoint_loc ~set loc e2
+      | MkPerform (_, e) -> mark_breakpoint_loc ~set loc e
       | MkHandle (e, hs) ->
-        mark_breakpoint_loc loc e
-        || List.exists hs ~f:(fun h -> mark_breakpoint_loc loc h.body)
+        mark_breakpoint_loc ~set loc e
+        || List.exists hs ~f:(fun h -> mark_breakpoint_loc ~set loc h.body)
       end
     in
-    if not found_in_subterm then e.breakpoint <- true else ();
+    if not found_in_subterm then e.breakpoint <- set else ();
     true
   end
 ;;

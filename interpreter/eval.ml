@@ -541,20 +541,20 @@ end = struct
             String.concat [ prefix; highlighted; suffix ] |> Stdio.print_endline
         in
         debugger ~source state
-      | BreakpointLoc pos ->
-        let success = Ast.mark_breakpoint_loc pos full_expr in
+      | BreakpointLoc (set, pos) ->
+        let success = Ast.mark_breakpoint_loc ~set pos full_expr in
         if success
         then Stdio.print_endline "Breakpoint set."
         else Stdio.print_endline "Could not set breakpoint.";
         debugger ~source state
-      | BreakpointEff eff ->
-        let count = Ast.mark_perform eff full_expr in
+      | BreakpointEff (set, eff) ->
+        let count = Ast.mark_perform ~set eff full_expr in
         if count > 0
         then Stdio.print_endline "Breakpoint set."
         else Stdio.print_endline "Could not set breakpoint.";
         debugger ~source state
-      | BreakpointFun fun_name ->
-        let count = Ast.mark_fun_app fun_name full_expr in
+      | BreakpointFun (set, fun_name) ->
+        let count = Ast.mark_fun_app ~set fun_name full_expr in
         if count > 0
         then Stdio.print_endline "Breakpoint set."
         else Stdio.print_endline "Could not set breakpoint.";
