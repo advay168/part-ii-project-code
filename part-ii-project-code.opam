@@ -14,7 +14,7 @@ depends: [
   "cmdliner" {>= "2.0"}
   "menhir" {>= "20250912"}
   "ppx_jane" {>= "0.17"}
-  "wcwidth" {>= "1.0"}
+  "terminal" {>= "0.2.1"}
   "odoc" {with-doc}
 ]
 build: [

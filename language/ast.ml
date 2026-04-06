@@ -6,8 +6,10 @@ let without_showing_anns f = Ref.set_temporarily show_anns false ~f
 type span = Lexing.position * Lexing.position
 
 let linecol_of_span ((startpos, endpos) : span) =
-  let sl, sc = startpos.pos_lnum, startpos.pos_cnum - startpos.pos_bol + 1 in
-  let el, ec = endpos.pos_lnum, endpos.pos_cnum - endpos.pos_bol + 1 in
+  let sl = startpos.pos_lnum in
+  let sc = startpos.pos_cnum - startpos.pos_bol + 1 in
+  let el = endpos.pos_lnum in
+  let ec = endpos.pos_cnum - endpos.pos_bol + 1 in
   (sl, sc), (el, ec)
 ;;
 
@@ -37,12 +39,17 @@ let sexp_of_annotated sexp_of_t { span; x; breakpoint } =
 
 let split_source_by_annotated source expr =
   let start, end_ = expr.span in
-  ( String.sub source ~pos:0 ~len:start.pos_cnum
-  , String.sub source ~pos:start.pos_cnum ~len:(end_.pos_cnum - start.pos_cnum)
-  , String.sub
+  let prefix = String.sub source ~pos:0 ~len:start.pos_cnum in
+  let middle =
+    String.sub source ~pos:start.pos_cnum ~len:(end_.pos_cnum - start.pos_cnum)
+  in
+  let suffix =
+    String.sub
       source
       ~pos:end_.pos_cnum
-      ~len:(String.length source - end_.pos_cnum) )
+      ~len:(String.length source - end_.pos_cnum)
+  in
+  prefix, middle, suffix
 ;;
 
 type binOp =
@@ -53,6 +60,15 @@ type binOp =
   | BOr
   | EMkTuple
 [@@deriving sexp_of]
+
+let bin_op_to_string = function
+  | IAdd -> "+"
+  | IMul -> "*"
+  | IEql -> "="
+  | BAnd -> "&&"
+  | BOr -> "||"
+  | EMkTuple -> ","
+;;
 
 type expr = expr' annotated
 
@@ -80,7 +96,9 @@ and handler =
 
 let within (line, col) (span : span) =
   let (sl, sc), (el, ec) = linecol_of_span span in
-  sl <= line && line <= el && (sl <> el || (sc <= col && col < ec))
+  let line_contained = sl <= line && line <= el in
+  let col_contained = sl <> el || (sc <= col && col < ec) in
+  line_contained && col_contained
 ;;
 
 let rec marker (f : expr' -> bool) (e : expr) =
@@ -91,65 +109,71 @@ let rec marker (f : expr' -> bool) (e : expr) =
       1)
     else 0
   in
-  count
-  + begin match e.x with
-  | MkInt _ -> 0
-  | MkBool _ -> 0
-  | MkUnit -> 0
-  | MkBinOp (e1, _, e2) -> marker f e1 + marker f e2
-  | MkNot e -> marker f e
-  | MkIf (e1, e2, e3) -> marker f e1 + marker f e2 + marker f e3
-  | MkVar _ -> 0
-  | MkLet (_, e1, e2) -> marker f e1 + marker f e2
-  | MkFun (_, e) -> marker f e
-  | MkApply (e1, e2) -> marker f e1 + marker f e2
-  | MkPerform (_, e) -> marker f e
-  | MkHandle (e, hs) ->
-    marker f e + List.sum (module Int) ~f:(fun h -> marker f h.body) hs
-  end
+  let rec_count =
+    begin match e.x with
+    | MkInt _ -> 0
+    | MkBool _ -> 0
+    | MkUnit -> 0
+    | MkBinOp (e1, _, e2) -> marker f e1 + marker f e2
+    | MkNot e -> marker f e
+    | MkIf (e1, e2, e3) -> marker f e1 + marker f e2 + marker f e3
+    | MkVar _ -> 0
+    | MkLet (_, e1, e2) -> marker f e1 + marker f e2
+    | MkFun (_, e) -> marker f e
+    | MkApply (e1, e2) -> marker f e1 + marker f e2
+    | MkPerform (_, e) -> marker f e
+    | MkHandle (e, hs) ->
+      marker f e + List.sum (module Int) ~f:(fun h -> marker f h.body) hs
+    end
+  in
+  count + rec_count
 ;;
 
 let mark_perform name =
+  let var_name = Var.make name in
   marker
   @@ function
-  | MkPerform (eff, _) -> String.equal name eff
+  | MkPerform (eff, _) -> Var.equal var_name eff
   | _ -> false
 ;;
 
 let mark_fun_app name =
+  let var_name = Var.make name in
   marker
   @@ function
-  | MkApply ({ x = MkVar func; _ }, _) -> String.equal name func
+  | MkApply ({ x = MkVar func; _ }, _) -> Var.equal var_name func
   | _ -> false
 ;;
 
-let rec mark_breakpoint loc (e : expr) : bool =
+let rec mark_breakpoint_loc loc (e : expr) : bool =
   if not (within loc e.span)
   then false
   else begin
-    if
-      not
-        begin match e.x with
-        | MkInt _ -> false
-        | MkBool _ -> false
-        | MkUnit -> false
-        | MkBinOp (e1, _, e2) ->
-          mark_breakpoint loc e1 || mark_breakpoint loc e2
-        | MkNot e -> mark_breakpoint loc e
-        | MkIf (e1, e2, e3) ->
-          mark_breakpoint loc e1
-          || mark_breakpoint loc e2
-          || mark_breakpoint loc e3
-        | MkVar _ -> false
-        | MkLet (_, e1, e2) -> mark_breakpoint loc e1 || mark_breakpoint loc e2
-        | MkFun (_, e) -> mark_breakpoint loc e
-        | MkApply (e1, e2) -> mark_breakpoint loc e1 || mark_breakpoint loc e2
-        | MkPerform (_, e) -> mark_breakpoint loc e
-        | MkHandle (e, hs) ->
-          mark_breakpoint loc e
-          || List.exists hs ~f:(fun h -> mark_breakpoint loc h.body)
-        end
-    then e.breakpoint <- true;
+    let found_in_subterm =
+      begin match e.x with
+      | MkInt _ -> false
+      | MkBool _ -> false
+      | MkUnit -> false
+      | MkBinOp (e1, _, e2) ->
+        mark_breakpoint_loc loc e1 || mark_breakpoint_loc loc e2
+      | MkNot e -> mark_breakpoint_loc loc e
+      | MkIf (e1, e2, e3) ->
+        mark_breakpoint_loc loc e1
+        || mark_breakpoint_loc loc e2
+        || mark_breakpoint_loc loc e3
+      | MkVar _ -> false
+      | MkLet (_, e1, e2) ->
+        mark_breakpoint_loc loc e1 || mark_breakpoint_loc loc e2
+      | MkFun (_, e) -> mark_breakpoint_loc loc e
+      | MkApply (e1, e2) ->
+        mark_breakpoint_loc loc e1 || mark_breakpoint_loc loc e2
+      | MkPerform (_, e) -> mark_breakpoint_loc loc e
+      | MkHandle (e, hs) ->
+        mark_breakpoint_loc loc e
+        || List.exists hs ~f:(fun h -> mark_breakpoint_loc loc h.body)
+      end
+    in
+    if not found_in_subterm then e.breakpoint <- true else ();
     true
   end
 ;;
@@ -164,5 +188,8 @@ functor
     let to_string expr =
       let _, s, _ = split_source_by_annotated M.source expr in
       s
+      |> String.split_lines
+      |> List.map ~f:String.strip
+      |> String.concat ~sep:"\n"
     ;;
   end

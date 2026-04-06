@@ -16,12 +16,12 @@ let rec pp (expr : Ast.expr) =
    | MkNot e -> "~" ^ pp e
    | MkIf (e1, e2, e3) ->
      "if " ^ pp e1 ^ " then " ^ pp e2 ^ " else " ^ pp e3 ^ " end"
-   | MkVar name -> name
+   | MkVar name -> Var.to_string name
    | MkLet (name, e1, e2) ->
-     "let " ^ name ^ " := " ^ pp e1 ^ " in " ^ pp e2 ^ " end"
-   | MkFun (name, e) -> "fun " ^ name ^ " -> " ^ pp e ^ " end"
+     "let " ^ Var.to_string name ^ " := " ^ pp e1 ^ " in " ^ pp e2 ^ " end"
+   | MkFun (name, e) -> "fun " ^ Var.to_string name ^ " -> " ^ pp e ^ " end"
    | MkApply (e1, e2) -> pp e1 ^ " @ " ^ pp e2
-   | MkPerform (eff, e) -> "perform (" ^ eff ^ " " ^ pp e ^ ")"
+   | MkPerform (eff, e) -> "perform (" ^ Var.to_string eff ^ " " ^ pp e ^ ")"
    | MkHandle (e, hs) ->
      "handle "
      ^ pp e
@@ -31,5 +31,12 @@ let rec pp (expr : Ast.expr) =
   |> wrap
 
 and pp_handler { eff; arg; kont; body } =
-  "| " ^ eff ^ ", " ^ arg ^ ", " ^ kont ^ " -> " ^ pp body
+  "| "
+  ^ Var.to_string eff
+  ^ ", "
+  ^ Var.to_string arg
+  ^ ", "
+  ^ Var.to_string kont
+  ^ " -> "
+  ^ pp body
 ;;

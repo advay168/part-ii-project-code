@@ -1,7 +1,6 @@
 open! Base
 open Cmdliner
 open Cmdliner.Term.Syntax
-include Interpreter
 
 let eval ~debug ~verbose filename code =
   let parsed_expr = Language.Parser.parse ~filename code in
@@ -13,19 +12,19 @@ let eval ~debug ~verbose filename code =
     |> Stdio.print_endline;
     parsed_expr |> Language.Pretty_print.pp |> Stdio.print_endline);
   try
-    let evaluated = Eval.eval ~debug ~source:code parsed_expr in
-    Stdio.printf "Evaluated: %s\n" (Value.to_string evaluated)
+    let evaluated = Interpreter.Eval.eval ~debug ~source:code parsed_expr in
+    Stdio.printf "Evaluated: %s\n" (Interpreter.Value.to_string evaluated)
   with
-  | Eval.TypeError (msg, value) ->
+  | Interpreter.Eval.TypeError (msg, value) ->
     Stdio.printf
       "TypeError: Expected value of type `%s` but got `%s`.\n"
       msg
-      (Value.to_string value)
-  | Eval.UnhandledEffect (eff, value) ->
+      (Interpreter.Value.to_string value)
+  | Interpreter.Eval.UnhandledEffect (eff, value) ->
     Stdio.printf
       "Unhandled effect while evaluating program: `%s %s`\n"
-      eff
-      (Value.to_string value)
+      (Language.Var.to_string eff)
+      (Interpreter.Value.to_string value)
 ;;
 
 let prog =

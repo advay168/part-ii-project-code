@@ -25,7 +25,7 @@
    (cmdliner (>= 2.0))
    (menhir (>= 20250912))
    (ppx_jane (>= 0.17))
-   (wcwidth (>= 1.0)))
+   (terminal (>= 0.2.1)))
  )
 
 ; See the complete stanza docs at https://dune.readthedocs.io/en/stable/reference/dune-project/index.html

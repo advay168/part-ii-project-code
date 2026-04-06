@@ -31,71 +31,95 @@ Help for debugger commands:
 |}
 ;;
 
+let run_regex s ~re ~group_nums =
+  let re = Str.regexp ("^" ^ re ^ "$") in
+  if Str.string_match re s 0
+  then Some (List.map group_nums ~f:(fun n -> Str.matched_group n s))
+  else None
+;;
+
 let parse_help s =
-  let re = Str.regexp {|^\(h\|help\|?\)$|} in
-  Option.some_if (Str.string_match re s 0) Help
+  match run_regex ~re:{|\(h\|help\|?\)|} ~group_nums:[] s with
+  | Some [] -> Some Help
+  | _ -> None
 ;;
 
 let parse_breakpoint_loc s =
-  let re =
-    Str.regexp {|^\(b\|bp\|break\|breakpoint\) \([0-9]*\):\([0-9]*\)$|}
-  in
-  if Str.string_match re s 0
-  then
-    Some
-      (BreakpointLoc
-         ( Int.of_string (Str.matched_group 2 s)
-         , Int.of_string (Str.matched_group 3 s) ))
-  else None
+  match
+    run_regex
+      ~re:{|\(b\|bp\|break\|breakpoint\) \([0-9]*\):\([0-9]*\)|}
+      ~group_nums:[ 2; 3 ]
+      s
+  with
+  | Some [ row; col ] ->
+    let row, col = Int.of_string row, Int.of_string col in
+    Some (BreakpointLoc (row, col))
+  | _ -> None
 ;;
 
-let ident_regex = "[a-zA-z_][0-9a-zA-z_]*"
+let ident_group = {|\([a-zA-z_][0-9a-zA-z_]*\)|}
 
 let parse_breakpoint_eff s =
-  let re =
-    Str.regexp ({|^\(b\|bp\|break\|breakpoint\) eff \(|} ^ ident_regex ^ {|\)$|})
-  in
-  if Str.string_match re s 0
-  then Some (BreakpointEff (Str.matched_group 2 s))
-  else None
+  match
+    run_regex
+      ~re:({|\(b\|bp\|break\|breakpoint\) eff |} ^ ident_group)
+      ~group_nums:[ 2 ]
+      s
+  with
+  | Some [ eff ] -> Some (BreakpointEff eff)
+  | _ -> None
 ;;
 
 let parse_breakpoint_fun s =
-  let re =
-    Str.regexp ({|^\(b\|bp\|break\|breakpoint\) fun \(|} ^ ident_regex ^ {|\)$|})
-  in
-  if Str.string_match re s 0
-  then Some (BreakpointFun (Str.matched_group 2 s))
-  else None
+  match
+    run_regex
+      ~re:({|\(b\|bp\|break\|breakpoint\) fun |} ^ ident_group)
+      ~group_nums:[ 2 ]
+      s
+  with
+  | Some [ eff ] -> Some (BreakpointFun eff)
+  | _ -> None
 ;;
 
 let parse_continue s =
-  let re = Str.regexp {|^\(r\|run\|c\|continue\)$|} in
-  Option.some_if (Str.string_match re s 0) Continue
+  match run_regex ~re:{|\(r\|run\|c\|continue\)|} ~group_nums:[] s with
+  | Some [] -> Some Continue
+  | _ -> None
 ;;
 
 let parse_where s =
-  let re = Str.regexp {|^\(w\|where\)$|} in
-  Option.some_if (Str.string_match re s 0) Where
+  match run_regex ~re:{|\(w\|where\)|} ~group_nums:[] s with
+  | Some [] -> Some Where
+  | _ -> None
 ;;
 
 let parse_inspect s =
-  let re = Str.regexp ({|^\(i\|inspect\) \($|} ^ ident_regex ^ {|\)$|}) in
-  if Str.string_match re s 0
-  then Some (Inspect (Str.matched_group 2 s))
-  else None
+  match
+    run_regex ~re:({|\(i\|inspect\) |} ^ ident_group) ~group_nums:[ 2 ] s
+  with
+  | Some [ var ] -> Some (Inspect var)
+  | _ -> None
 ;;
 
 let parse_nop s =
-  let re = Str.regexp {|^ *$|} in
-  Option.some_if (Str.string_match re s 0) Nop
+  match run_regex ~re:{| *|} ~group_nums:[] s with
+  | Some [] -> Some Nop
+  | _ -> None
 ;;
 
 let parse_show_state s =
-  let re = Str.regexp {|^\(show\|state\|cek\)$|} in
-  Option.some_if (Str.string_match re s 0) ShowState
+  match run_regex ~re:{|\(show\|state\|cek\)|} ~group_nums:[] s with
+  | Some [] -> Some ShowState
+  | _ -> None
 ;;
 
+let parse_step_over s =
+  match run_regex ~re:{|\(o\|over\)|} ~group_nums:[] s with
+  | Some [] -> Some Stepover
+  | _ -> None
+;;
+
+(* Doesn't use [run_regex] because of optional arg. *)
 let parse_step_fwd s =
   let re = Str.regexp {|^\(s\|step\) ?\([0-9]+\)?$|} in
   if Str.string_match re s 0
@@ -107,6 +131,7 @@ let parse_step_fwd s =
   else None
 ;;
 
+(* Doesn't use [run_regex] because of optional arg. *)
 let parse_step_bck s =
   let re = Str.regexp {|^\(r\|rev\) ?\([0-9]+\)?$|} in
   if Str.string_match re s 0
@@ -118,12 +143,7 @@ let parse_step_bck s =
   else None
 ;;
 
-let parse_step_over s =
-  let re = Str.regexp {|^\(o\|over\)$|} in
-  Option.some_if (Str.string_match re s 0) Stepover
-;;
-
-let parse s =
+let parsers =
   [ parse_help
   ; parse_breakpoint_loc
   ; parse_breakpoint_fun
@@ -137,10 +157,18 @@ let parse s =
   ; parse_step_bck
   ; parse_step_over
   ]
-  |> List.map ~f:(fun f -> f s)
-  |> List.find ~f:Option.is_some
-  |> Option.join
-  |> Option.value_or_thunk ~default:(fun () ->
-    Stdio.prerr_endline "Error: Could not parse debugger command";
-    Nop)
+;;
+
+let parse s =
+  let parsed =
+    parsers
+    |> List.map ~f:(fun f -> f s)
+    |> List.find ~f:Option.is_some
+    |> Option.join
+  in
+  match parsed with
+  | Some parsed -> parsed
+  | None ->
+    Stdio.prerr_endline "Error: Could not parse the debugger command";
+    Nop
 ;;

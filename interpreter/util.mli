@@ -1,14 +1,4 @@
-type ansi =
-  | Bold
-  | Italic
-  | Underline
-  | Blink
-  | RedFG
-  | GreenFG
-  | BlueFG
-  | RedBG
-  | GreenBG
-  | BlueBG
+type ansi = Terminal.Style.t
 
 val with_ansi : ansi list -> string -> string
 

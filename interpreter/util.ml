@@ -1,48 +1,39 @@
 open! Base
 
-type ansi =
-  | Bold
-  | Italic
-  | Underline
-  | Blink
-  | RedFG
-  | GreenFG
-  | BlueFG
-  | RedBG
-  | GreenBG
-  | BlueBG
+type ansi = Terminal.Style.t
 
 let with_ansi ansis s =
-  let convert = function
-    | Bold -> "1"
-    | Italic -> "3"
-    | Underline -> "4"
-    | Blink -> "5"
-    | RedFG -> "31"
-    | GreenFG -> "32"
-    | BlueFG -> "34"
-    | RedBG -> "41"
-    | GreenBG -> "42"
-    | BlueBG -> "44"
-  in
-  "\027["
-  ^ String.concat ~sep:";" (List.map ~f:convert ansis)
-  ^ "m"
-  ^ s
-  ^ "\027[0m"
+  let convert = Terminal.Style.code in
+  String.concat (List.map ~f:convert ansis) ^ s ^ convert Terminal.Style.none
 ;;
 
 let repeat s n = String.concat (List.init n ~f:(Fn.const s))
-let utf_width = Wcwidth.wcswidth
+let utf_width = Terminal.guess_printed_width
 
 let utf_pad_right ~pad width s =
   let w = utf_width s in
   s ^ repeat pad (width - w)
 ;;
 
+let[@tail_mod_cons] rec zip3_longest lst =
+  let uncons = function
+    | [] -> "", []
+    | x :: xs -> x, xs
+  in
+  match lst with
+  | [], [], [] -> []
+  | xs, ys, zs ->
+    let x, xs = uncons xs in
+    let y, ys = uncons ys in
+    let z, zs = uncons zs in
+    (x, y, z) :: zip3_longest (xs, ys, zs)
+;;
+
+let table_width_ratioed w = w * 4 / 12, w * 3 / 12, w * 5 / 12
+
 let print_table ~header:(ch, eh, kh) ~stringify lst =
-  let w = 140 in
-  let w1, w2, w3 = w * 4 / 12, w * 3 / 12, w * 5 / 12 in
+  let w = (Terminal.Size.get_columns () |> Option.value ~default:85) - 10 in
+  let w1, w2, w3 = table_width_ratioed w in
   let break w xs =
     List.fold
       (String.split ~on:' ' xs |> List.rev)
@@ -76,7 +67,7 @@ let print_table ~header:(ch, eh, kh) ~stringify lst =
            (List.map ~f:(fun l -> repeat "─" (l + 2)) [ w1; w2; w3 ])
        ^ right)
   in
-  let print_row b row =
+  let print_row horizontal_sep row =
     let go =
       fun (c, e, k) ->
       Stdlib.Printf.printf
@@ -85,20 +76,7 @@ let print_table ~header:(ch, eh, kh) ~stringify lst =
         (utf_pad_right ~pad:" " w2 e)
         (utf_pad_right ~pad:" " w3 k)
     in
-    let[@tail_mod_cons] rec zip3_longest lst =
-      let uncons = function
-        | [] -> "", []
-        | x :: xs -> x, xs
-      in
-      match lst with
-      | [], [], [] -> []
-      | xs, ys, zs ->
-        let x, xs = uncons xs in
-        let y, ys = uncons ys in
-        let z, zs = uncons zs in
-        (x, y, z) :: zip3_longest (xs, ys, zs)
-    in
-    if b then print_seps "├" "┼" "┤";
+    if horizontal_sep then print_seps "├" "┼" "┤";
     zip3_longest row |> List.iter ~f:go
   in
   print_seps "┌" "┬" "┐";

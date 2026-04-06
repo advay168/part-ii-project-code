@@ -30,6 +30,8 @@ type binOp =
   | EMkTuple
 [@@deriving sexp_of]
 
+val bin_op_to_string : binOp -> string
+
 type expr = expr' annotated
 
 and expr' =
@@ -54,7 +56,7 @@ and handler =
   }
 [@@deriving sexp_of]
 
-val mark_breakpoint : int * int -> expr -> bool
+val mark_breakpoint_loc : int * int -> expr -> bool
 val mark_perform : string -> expr -> int
 val mark_fun_app : string -> expr -> int
 

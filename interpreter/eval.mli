@@ -4,9 +4,9 @@ module Value : sig
   val to_string : t -> string
 end
 
-module Main : sig
+module Eval : sig
   exception TypeError of string * Value.t
-  exception UnboundVarError of string * Value.t Env.t
+  exception UnboundVarError of Language.Var.t * Value.t Env.t
   exception UnhandledEffect of Language.Var.t * Value.t
 
   val eval : debug:bool -> source:string -> Language.Ast.expr -> Value.t
