@@ -12,7 +12,11 @@ let eval ~debug ~verbose filename code =
     |> Stdio.print_endline;
     parsed_expr |> Language.Pretty_print.pp |> Stdio.print_endline);
   try
-    let evaluated = Interpreter.Eval.eval ~debug ~source:code parsed_expr in
+    let evaluated =
+      if not debug
+      then Interpreter.Eval.eval ~source:code parsed_expr
+      else fst (Interpreter.Debugger.eval ~source:code parsed_expr)
+    in
     Stdio.printf "Evaluated: %s\n" (Interpreter.Value.to_string evaluated)
   with
   | Interpreter.Eval.TypeError (msg, value) ->

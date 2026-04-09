@@ -113,7 +113,7 @@ and Eval : sig
   (* type kontinuation = kontinuation' Ast.annotated *)
   (* and kontinuation' *)
 
-  val eval : debug:bool -> source:string -> Language.Ast.expr -> Value.t
+  val eval : source:string -> Language.Ast.expr -> Value.t
 
   (* For Debugger. *)
   type expr_or_val =
@@ -144,16 +144,20 @@ and Eval : sig
     ; k : kontinuation list
     }
 
+  exception Breakpoint of cek list * cek
+
   (** [times] refers to the number of times to run before breakpointing. 
       [ignore_bp] means to not trigger any AST breakpoints on this step. Useful
       to continue execution from the debugger.
    *)
   val driver
     :  ?ignore_bp:bool
-    -> history:cek list
-    -> times:int option
+    -> ?times:int
+    -> ?history:cek list
     -> cek
-    -> Value.t * cek list
+    -> Value.t * cek list option
+
+  val builtins_env : env
 end = struct
   exception TypeError of string * Value.t
   exception UnboundVarError of Var.t * Value.t Env.t
@@ -322,22 +326,26 @@ end = struct
       [ignore_bp] means to not trigger any AST breakpoints on this step. Useful
       to continue execution from the debugger.
    *)
-  let rec driver ?(ignore_bp = false) ~history:old_history ~times state =
+  let rec driver ?(ignore_bp = false) ?times ?history:old_history state =
     let times =
       match times with
-      | Some 0 when not ignore_bp -> raise (Breakpoint (old_history, state))
+      | Some 0 when not ignore_bp ->
+        raise (Breakpoint (Option.value_exn old_history, state))
       | Some n -> Some (n - 1)
       | None -> None
     in
-    let history = state :: old_history in
+    let history =
+      Option.map ~f:(fun old_history -> state :: old_history) old_history
+    in
     match state with
     | { c = CtrlValue v; e = _; k = [] } -> v, history
-    | { c = CtrlValue _; e = _; k = [ { breakpoint = true; _ } ] }
-    | { c = CtrlExpr { breakpoint = true; _ }; _ }
-      when not ignore_bp ->
+    | { c = CtrlValue _; e = _; k = ({ breakpoint = true; _ } as kk) :: _ } ->
+      kk.breakpoint <- false;
+      raise (Breakpoint (Option.value_exn old_history, state))
+    | { c = CtrlExpr { breakpoint = true; _ }; _ } when not ignore_bp ->
       Stdio.print_endline "Breakpoint hit";
-      raise (Breakpoint (old_history, state))
-    | _ -> driver ~history ~times (step state)
+      raise (Breakpoint (Option.value_exn old_history, state))
+    | _ -> driver ?history ?times (step state)
   ;;
 
   let builtins_env =
@@ -346,38 +354,21 @@ end = struct
     |> Env.set ~hidden:true (Var.make "snd") (Value.VFunBuiltin Snd)
   ;;
 
-  let eval ~debug ~source expr =
+  let eval ~source:_ expr =
     let cek = { c = CtrlExpr expr; e = builtins_env; k = [] } in
-    let rec loop thunk =
-      try thunk () with
-      | Breakpoint (history, current_cek) ->
-        loop
-        @@ fun () ->
-        Debugger.debugger
-          ~source
-          ~print_state:true
-          { history; current_cek; full_expr = expr }
-    in
-    let times = Option.some_if debug 0 in
-    let evaluated_value, _final_history =
-      loop (fun () -> driver ~history:[] ~times cek)
-    in
-    evaluated_value
+    let value, _ = driver cek in
+    value
   ;;
 end
 
 and Debugger : sig
-  type dbg_state =
-    { history : Eval.cek list
-    ; current_cek : Eval.cek
-    ; full_expr : Ast.expr
-    }
-
-  val debugger
-    :  ?print_state:bool
+  val eval
+    :  ?break_at_start:bool
     -> source:string
-    -> dbg_state
+    -> Language.Ast.expr
     -> Value.t * Eval.cek list
+
+  (* val print_cek : source:string -> Eval.cek -> unit *)
 end = struct
   open Eval
 
@@ -404,7 +395,7 @@ end = struct
     let sprintf = Printf.sprintf in
     (* TODO: Show [env]. *)
     match k.x with
-    | CNot Hole -> [%string "not *"]
+    | CNot Hole -> sprintf "not %s" hole
     | CBinOp1 (Hole, EMkTuple, expr, _env) ->
       let expr = Expr.to_string expr in
       sprintf "(%s, %s)" hole expr
@@ -474,28 +465,34 @@ end = struct
       [ string_of_expr_or_val c ], [ string_of_env e ], string_of_k k)
   ;;
 
+  let print_cek ~source cek =
+    Util.print_table
+      ~header:("C", "E", "K")
+      ~stringify:(stringify_cek source)
+      [ cek ]
+  ;;
+
   let rec debugger ?(print_state = false) ~source state =
     match state with
     | { history; current_cek; full_expr } ->
-      if print_state
-      then
-        Util.print_table
-          ~header:("C", "E", "K")
-          ~stringify:(stringify_cek source)
-          [ current_cek ];
+      if print_state then print_cek ~source current_cek;
       begin match prompt () with
       | Nop -> debugger ~source state
       | Help ->
         Stdio.print_string Debugger_cmd_parser.help_text;
         debugger ~source state
-      | Continue -> driver ~ignore_bp:true ~times:None ~history current_cek
-      | Stepover ->
-        begin match current_cek.k with
-        | [] -> ()
-        | k :: _ -> k.breakpoint <- true
-        end;
-        driver ~ignore_bp:true ~times:None ~history current_cek
-      | StepFwd n -> driver ~ignore_bp:true ~history ~times:(Some n) current_cek
+      | Continue -> driver ~ignore_bp:true ?times:None ~history current_cek
+      | Stepover -> begin
+        match current_cek.c with
+        | CtrlExpr _ ->
+          begin match current_cek.k with
+          | [] -> ()
+          | k :: _ -> k.breakpoint <- true
+          end;
+          driver ~ignore_bp:true ?times:None ~history current_cek
+        | CtrlValue _ -> debugger ~print_state:true ~source state
+      end
+      | StepFwd n -> driver ~ignore_bp:true ~history ~times:n current_cek
       | StepBck n ->
         (* Pop the first n entries *)
         let new_history = List.drop history n in
@@ -583,5 +580,24 @@ end = struct
           debugger ~source state
       end
       end
+  ;;
+
+  let eval ?(break_at_start = true) ~source expr =
+    let rec loop thunk =
+      try thunk () with
+      | Eval.Breakpoint (history, current_cek) ->
+        loop
+        @@ fun () ->
+        debugger
+          ~source
+          ~print_state:true
+          { history; current_cek; full_expr = expr }
+    in
+    let cek = { c = CtrlExpr expr; e = builtins_env; k = [] } in
+    let value, history =
+      loop (fun () ->
+        driver ~history:[] ?times:(if break_at_start then Some 0 else None) cek)
+    in
+    value, Option.value_exn history
   ;;
 end

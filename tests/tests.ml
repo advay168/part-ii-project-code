@@ -1,5 +1,5 @@
 open! Base
-include Interpreter
+open Interpreter
 
 let test_string str =
   Language.Ast.show_anns := false;
@@ -9,9 +9,8 @@ let test_string str =
   |> Sexp.to_string_hum
   |> Stdio.print_string;
   Stdio.print_string " --> ";
-  Eval.eval ~debug:false ~source:str parsed
-  |> Value.to_string
-  |> Stdio.print_endline
+  let evaluated = Eval.eval ~source:str parsed in
+  evaluated |> Value.to_string |> Stdio.print_endline
 ;;
 
 let%expect_test "Test simple arithmetic" =

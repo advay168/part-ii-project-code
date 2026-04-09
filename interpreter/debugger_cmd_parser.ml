@@ -15,22 +15,21 @@ type cmd =
   | Stepover
 
 let help_text =
-  {|
-Help for debugger commands:
-- b/bp/break/breakpoint loc <line>:<col> -> Set breakpoint at location.
-- u/unset loc <line>:<col>               -> Unset breakpoint at location.
-- b/bp/break/breakpoint eff <name>       -> Set breakpoint when effect <name> is performed.
+  {|Help for debugger commands:
+- h/help                                 -> Print this help text.
+- b/bp/break/breakpoint eff <name>       -> Set a breakpoint for when effect <name> is performed.
 - u/unset eff <name>                     -> Unset breakpoint for effect <name>.
-- b/bp/break/breakpoint fun <name>       -> Set breakpoint when function <name> is going to be applied.
+- b/bp/break/breakpoint fun <name>       -> Set breakpoint for when function <name> is applied.
 - u/unset fun <name>                     -> Unset breakpoint for function <name>.
-- r/run/c/continue                       -> Continue without debugging.
-- w/where                                -> Highlight the source location of the current term.
-- show/state/cek                         -> Print CEK state.
-- i/inspect <var>                        -> Print the value of variable <var>.
+- b/bp/break/breakpoint loc <line>:<col> -> Set breakpoint for code at location.
+- u/unset loc <line>:<col>               -> Unset breakpoint at location.
+- r/run/c/continue                       -> Exit debugger and continue running.
 - s/step <num>? (default 1)              -> Step the evaluation forwards <num> times.
 - r/rev <num>? (default 1)               -> Step the evaluation in reverse <num> times.
 - o/over                                 -> Step over evaluation of the current term.
-- h/help                                 -> Print this help text.
+- w/where                                -> Highlight the source location of the current term.
+- show/state/cek                         -> Print CEK state.
+- i/inspect <var>                        -> Print the value of variable <var>.
 |}
 ;;
 

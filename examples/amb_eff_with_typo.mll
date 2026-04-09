@@ -17,7 +17,7 @@ in
   find (fun _ ->
     let x := amb (2, 3) in
     let y := amb (5, 7) in
-    let _ := assert (x + y = 8) in
+    let _ := assert (x + x = 7) in
     (x, y)
     end end end
   end)
