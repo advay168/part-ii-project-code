@@ -94,13 +94,6 @@ and handler =
   }
 [@@deriving sexp_of]
 
-let within (line, col) (span : span) =
-  let (sl, sc), (el, ec) = linecol_of_span span in
-  let line_contained = sl <= line && line <= el in
-  let col_contained = sl <> el || (sc <= col && col < ec) in
-  line_contained && col_contained
-;;
-
 let rec marker ~set (f : expr' -> bool) (e : expr) =
   let count =
     if f e.x
@@ -145,6 +138,17 @@ let mark_fun_app ~set name =
   @@ function
   | MkApply ({ x = MkVar func; _ }, _) -> Var.equal var_name func
   | _ -> false
+;;
+
+let within (line, col) (span : span) =
+  let (sl, sc), (el, ec) = linecol_of_span span in
+  if line < sl || line > el
+  then false
+  else if line = sl && col < sc
+  then false
+  else if line = el && col >= ec
+  then false
+  else true
 ;;
 
 let rec mark_breakpoint_loc ~set loc (e : expr) : bool =

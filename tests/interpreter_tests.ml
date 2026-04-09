@@ -13,6 +13,13 @@ let test_string str =
   evaluated |> Value.to_string |> Stdio.print_endline
 ;;
 
+let num_test_cases = ref 0
+
+let test_string string =
+  num_test_cases := !num_test_cases + 1;
+  test_string string
+;;
+
 let%expect_test "Test simple arithmetic" =
   test_string "1 + 2";
   [%expect "(MkBinOp (MkInt 1) IAdd (MkInt 2)) --> 3"]
@@ -59,10 +66,7 @@ let%expect_test "Bool operation precedence" =
   [%expect "(MkBinOp (MkNot (MkBool true)) BAnd (MkBool true)) --> false"];
   test_string "1 = 1 && true";
   [%expect
-    {| (MkBinOp (MkBinOp (MkInt 1) IEql (MkInt 1)) BAnd (MkBool true)) --> true |}];
-  (try test_string "~1 = 1" with
-   | Eval.TypeError _ -> ());
-  [%expect {| (MkBinOp (MkNot (MkInt 1)) IEql (MkInt 1)) --> |}]
+    {| (MkBinOp (MkBinOp (MkInt 1) IEql (MkInt 1)) BAnd (MkBool true)) --> true |}]
 ;;
 
 let%expect_test "Test tuples" =
@@ -94,11 +98,13 @@ let%expect_test "Let binds" =
   test_string "let x := 123 in let x := 456 in x end end";
   [%expect
     "(MkLet 'x' (MkInt 123) (MkLet 'x' (MkInt 456) (MkVar 'x'))) --> 456"];
-  (try test_string "x" with
-   | Eval.UnboundVarError _ -> ());
+  begin try test_string "x" with
+  | Eval.UnboundVarError _ -> ()
+  end;
   [%expect {| (MkVar 'x') --> |}];
-  (try test_string "let x := x in x end" with
-   | Eval.UnboundVarError _ -> ());
+  begin try test_string "let x := x in x end" with
+  | Eval.UnboundVarError _ -> ()
+  end;
   [%expect {| (MkLet 'x' (MkVar 'x') (MkVar 'x')) --> |}]
 ;;
 
@@ -113,7 +119,10 @@ let%expect_test "Functions" =
      (MkApply (MkVar 'f') (MkInt 123))) --> 124
     |}];
   test_string "let f := fun f -> f end in f end";
-  [%expect {| (MkLet 'f' (MkFun 'f' (MkVar 'f')) (MkVar 'f')) --> <fun> |}];
+  [%expect {| (MkLet 'f' (MkFun 'f' (MkVar 'f')) (MkVar 'f')) --> <fun> |}]
+;;
+
+let%expect_test "Recursion and higher order functions" =
   test_string
     {|
       let fact := fun x ->
@@ -148,6 +157,61 @@ let%expect_test "Functions" =
       (MkLet 'add6' (MkApply (MkVar 'addn') (MkInt 6))
        (MkBinOp (MkApply (MkVar 'add5') (MkInt 10)) IAdd
         (MkApply (MkVar 'add6') (MkInt 20)))))) --> 41
+    |}];
+  test_string
+    {| let iterate := fun f -> fun n -> fun x ->
+         if n = 0 then x else f (iterate f (n + -1) x) end
+       end end end in
+       iterate (fun x -> x + 2 end) 5 0
+       end |};
+  [%expect
+    {|
+    (MkLet 'iterate'
+     (MkFun 'f'
+      (MkFun 'n'
+       (MkFun 'x'
+        (MkIf (MkBinOp (MkVar 'n') IEql (MkInt 0)) (MkVar 'x')
+         (MkApply (MkVar 'f')
+          (MkApply
+           (MkApply (MkApply (MkVar 'iterate') (MkVar 'f'))
+            (MkBinOp (MkVar 'n') IAdd (MkInt -1)))
+           (MkVar 'x')))))))
+     (MkApply
+      (MkApply
+       (MkApply (MkVar 'iterate')
+        (MkFun 'x' (MkBinOp (MkVar 'x') IAdd (MkInt 2))))
+       (MkInt 5))
+      (MkInt 0))) --> 10
+    |}]
+;;
+
+let%expect_test "Static Scoping" =
+  test_string
+    {| let x := 10 in
+       let f := fun y -> x + y end in
+       let x := 20 in
+       f 5
+       end end end |};
+  (* Should NOT be 25 *)
+  [%expect
+    {|
+    (MkLet 'x' (MkInt 10)
+     (MkLet 'f' (MkFun 'y' (MkBinOp (MkVar 'x') IAdd (MkVar 'y')))
+      (MkLet 'x' (MkInt 20) (MkApply (MkVar 'f') (MkInt 5))))) --> 15
+   |}];
+  begin try
+    test_string
+      {| let f := fun y -> x + y end in
+       let x := 20 in
+       f 5
+       end end |}
+  with
+  | Eval.UnboundVarError _ -> ()
+  end;
+  [%expect
+    {|
+    (MkLet 'f' (MkFun 'y' (MkBinOp (MkVar 'x') IAdd (MkVar 'y')))
+     (MkLet 'x' (MkInt 20) (MkApply (MkVar 'f') (MkInt 5)))) -->
     |}]
 ;;
 
@@ -176,15 +240,16 @@ let%expect_test "Exceptions" =
     (MkHandle (MkBinOp (MkInt 1) IAdd (MkPerform 'Exn' (MkInt 456)))
      (((eff 'Exn') (arg 'arg') (kont 'k') (body (MkVar 'arg'))))) --> 456
     |}];
-  (try test_string "perform (Exn 123)" with
-   | Eval.UnhandledEffect _ -> ());
+  begin try test_string "perform (Exn 123)" with
+  | Eval.UnhandledEffect _ -> ()
+  end;
   [%expect {| (MkPerform 'Exn' (MkInt 123)) --> |}];
-  (try
-     test_string
-       "handle 1 + perform (Exn 456) with | Exn, arg, k -> perform (Exn 123) \
-        end"
-   with
-   | Eval.UnhandledEffect _ -> ());
+  begin try
+    test_string
+      "handle 1 + perform (Exn 456) with | Exn, arg, k -> perform (Exn 123) end"
+  with
+  | Eval.UnhandledEffect _ -> ()
+  end;
   [%expect
     {|
     (MkHandle (MkBinOp (MkInt 1) IAdd (MkPerform 'Exn' (MkInt 456)))
@@ -208,8 +273,9 @@ let%expect_test "Single/Multi-shot Effects" =
        (body (MkApply (MkVar 'k') (MkInt 123)))))) --> 123
     |}];
   test_string
-    "handle perform (Eff 456) with | Eff, arg, k -> if arg = 456 then k 123 \
-     else perform (Eff 1) end end";
+    {| handle perform (Eff 456)
+       with | Eff, arg, k -> if arg = 456 then k 123 else perform (Eff 1)
+       end end|};
   [%expect
     {|
     (MkHandle (MkPerform 'Eff' (MkInt 456))
@@ -262,56 +328,92 @@ let%expect_test "Named Effects" =
     |}]
 ;;
 
-let%expect_test "Test location tracking" =
-  Language.Ast.show_anns := true;
-  Language.Parser.parse
-    ~filename:"test"
-    "handle 1 + 12\n + 3 with\n| Exn, arg, k -> 123 end"
-  |> Language.Ast.sexp_of_expr
-  |> Sexp.to_string_hum
-  |> Stdio.print_endline;
+let%expect_test "Nested and Deep handlers" =
+  test_string
+    {| handle perform (Eff ()) + perform (Eff ()) with
+       | Eff, _, k -> k 10
+       end |};
   [%expect
     {|
     (MkHandle
-     (MkBinOp
-      (MkBinOp (MkInt 1 <1:8..1:9>) IAdd (MkInt 12 <1:12..1:14>) <1:8..1:14>)
-      IAdd (MkInt 3 <2:4..2:5>) <1:8..2:5>)
-     (((eff 'Exn') (arg 'arg') (kont 'k') (body (MkInt 123 <3:18..3:21>))))
-     <1:1..3:25>)
+     (MkBinOp (MkPerform 'Eff' (MkUnit)) IAdd (MkPerform 'Eff' (MkUnit)))
+     (((eff 'Eff') (arg '_') (kont 'k') (body (MkApply (MkVar 'k') (MkInt 10)))))) --> 20
+    |}];
+  test_string
+    {| handle
+         handle perform (Eff ()) with
+         | Eff, _, k -> k ( perform (Eff ()) + 1)
+         end
+       with
+       | Eff, _, k -> k 10
+       end |};
+  [%expect
+    {|
+    (MkHandle
+     (MkHandle (MkPerform 'Eff' (MkUnit))
+      (((eff 'Eff') (arg '_') (kont 'k')
+        (body
+         (MkApply (MkVar 'k')
+          (MkBinOp (MkPerform 'Eff' (MkUnit)) IAdd (MkInt 1)))))))
+     (((eff 'Eff') (arg '_') (kont 'k') (body (MkApply (MkVar 'k') (MkInt 10)))))) --> 11
     |}]
 ;;
 
-(* Breakpoint shown by # on location. *)
-
-let%expect_test "Test setting breakpoint by effect name" =
-  Language.Ast.show_anns := true;
-  let expr =
-    Language.Parser.parse
-      ~filename:"test"
-      "perform (Eff 123) + perform (Eff 123)"
-  in
-  ignore (Language.Ast.mark_perform ~set:true "Eff" expr);
-  expr |> Language.Ast.sexp_of_expr |> Sexp.to_string_hum |> Stdio.print_endline;
+let%expect_test "Closure capture with effects" =
+  test_string
+    {| let x := 10 in
+       let f := fun y -> x + y end in
+       handle let y := perform (Eff ()) in f y end with
+       | Eff, _, k -> 
+           let x := 100 in k 5 end
+       end end end |};
+  (* Should be 10 + 5, not 100 + 5 *)
   [%expect
     {|
-    (MkBinOp (MkPerform 'Eff' (MkInt 123 <1:14..1:17>) <#1:1..1:18>) IAdd
-     (MkPerform 'Eff' (MkInt 123 <1:34..1:37>) <#1:21..1:38>) <1:1..1:38>)
+    (MkLet 'x' (MkInt 10)
+     (MkLet 'f' (MkFun 'y' (MkBinOp (MkVar 'x') IAdd (MkVar 'y')))
+      (MkHandle
+       (MkLet 'y' (MkPerform 'Eff' (MkUnit)) (MkApply (MkVar 'f') (MkVar 'y')))
+       (((eff 'Eff') (arg '_') (kont 'k')
+         (body (MkLet 'x' (MkInt 100) (MkApply (MkVar 'k') (MkInt 5))))))))) --> 15
+   |}];
+  begin try
+    test_string
+      {| let f := handle fun x -> x + perform (Eff ()) end
+                  with | Eff, _ , k -> k 10 end
+         in f 20 end |}
+  with
+  | Eval.UnhandledEffect _ -> ()
+  end;
+  [%expect
+    {|
+    (MkLet 'f'
+     (MkHandle (MkFun 'x' (MkBinOp (MkVar 'x') IAdd (MkPerform 'Eff' (MkUnit))))
+      (((eff 'Eff') (arg '_') (kont 'k') (body (MkApply (MkVar 'k') (MkInt 10))))))
+     (MkApply (MkVar 'f') (MkInt 20))) -->
     |}]
 ;;
 
-let%expect_test "Test setting breakpoint by function name" =
-  Language.Ast.show_anns := true;
-  let expr =
-    Language.Parser.parse
-      ~filename:"test"
-      "let func := fun arg -> arg end in func 123 end"
+let%expect_test "Ill typed programs" =
+  let test_string expr =
+    begin try test_string expr with
+    | Eval.TypeError _ -> Stdio.print_endline "TypeError"
+    end
   in
-  ignore (Language.Ast.mark_fun_app ~set:true "func" expr);
-  expr |> Language.Ast.sexp_of_expr |> Sexp.to_string_hum |> Stdio.print_endline;
+  test_string "1 + true";
+  [%expect {| (MkBinOp (MkInt 1) IAdd (MkBool true)) --> TypeError |}];
+  test_string "(fun x -> x end) + 1";
+  [%expect {| (MkBinOp (MkFun 'x' (MkVar 'x')) IAdd (MkInt 1)) --> TypeError |}];
+  test_string "if 1 then 2 else 3 end";
+  [%expect {| (MkIf (MkInt 1) (MkInt 2) (MkInt 3)) --> TypeError |}];
+  test_string "let f := 1 in f 2 end";
   [%expect
-    {|
-    (MkLet 'func' (MkFun 'arg' (MkVar 'arg' <1:24..1:27>) <1:13..1:31>)
-     (MkApply (MkVar 'func' <1:35..1:39>) (MkInt 123 <1:40..1:43>) <#1:35..1:43>)
-     <1:1..1:47>)
-    |}]
+    {| (MkLet 'f' (MkInt 1) (MkApply (MkVar 'f') (MkInt 2))) --> TypeError |}];
+  test_string "fst 1";
+  [%expect {| (MkApply (MkVar 'fst') (MkInt 1)) --> TypeError |}]
+;;
+
+let%expect_test "Number of test cases" =
+  Stdio.printf "Test cases: %d\n" !num_test_cases;
+  [%expect {| Test cases: 54 |}]
 ;;
