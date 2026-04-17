@@ -510,32 +510,27 @@ end = struct
           { history = new_history; current_cek = new_cek; full_expr }
       | ShowState -> debugger ~print_state:true ~source state
       | Where ->
+        let display_source annotated =
+          let prefix, code_to_highlight, suffix =
+            Ast.split_source_by_annotated source annotated
+          in
+          if !Sys.interactive
+          then begin
+            let highlighted =
+              Util.with_ansi
+                [ Terminal.Style.underline
+                ; Terminal.Style.fg (Terminal.Color.ansi `green)
+                ]
+                code_to_highlight
+            in
+            String.concat [ prefix; highlighted; suffix ] |> Stdio.print_endline
+          end
+          else Stdio.print_endline code_to_highlight
+        in
         let () =
           match current_cek.c with
-          | CtrlValue _ ->
-            let prefix, code_to_highlight, suffix =
-              Ast.split_source_by_annotated source (List.hd_exn current_cek.k)
-            in
-            let highlighted =
-              Util.with_ansi
-                [ Terminal.Style.underline
-                ; Terminal.Style.fg (Terminal.Color.ansi `green)
-                ]
-                code_to_highlight
-            in
-            String.concat [ prefix; highlighted; suffix ] |> Stdio.print_endline
-          | CtrlExpr expr ->
-            let prefix, code_to_highlight, suffix =
-              Ast.split_source_by_annotated source expr
-            in
-            let highlighted =
-              Util.with_ansi
-                [ Terminal.Style.underline
-                ; Terminal.Style.fg (Terminal.Color.ansi `green)
-                ]
-                code_to_highlight
-            in
-            String.concat [ prefix; highlighted; suffix ] |> Stdio.print_endline
+          | CtrlExpr expr -> display_source expr
+          | CtrlValue _ -> display_source (List.hd_exn current_cek.k)
         in
         debugger ~source state
       | BreakpointLoc (set, pos) ->

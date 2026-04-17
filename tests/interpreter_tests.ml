@@ -325,7 +325,14 @@ let%expect_test "Named Effects" =
         (body (MkApply (MkVar 'k1') (MkInt 123))))))
      (((eff 'Eff2') (arg 'arg2') (kont 'k2')
        (body (MkApply (MkVar 'k2') (MkInt 456)))))) --> 456
-    |}]
+     |}];
+  begin try
+    test_string
+      {| handle perform (Eff ()) with | Eff, x1, k1 -> () | Eff, x2, k2 -> () |}
+  with
+  | Language.Parser.ParseError err -> Stdio.prerr_endline err
+  end;
+  [%expect "Parsing Error"]
 ;;
 
 let%expect_test "Nested and Deep handlers" =
@@ -415,5 +422,5 @@ let%expect_test "Ill typed programs" =
 
 let%expect_test "Number of test cases" =
   Stdio.printf "Test cases: %d\n" !num_test_cases;
-  [%expect {| Test cases: 54 |}]
+  [%expect {| Test cases: 55 |}]
 ;;
