@@ -23,7 +23,7 @@ let help_text =
 - u/unset fun <name>                     -> Unset breakpoint for function <name>.
 - b/bp/break/breakpoint loc <line>:<col> -> Set breakpoint for code at location.
 - u/unset loc <line>:<col>               -> Unset breakpoint at location.
-- r/run/c/continue                       -> Exit debugger and continue running.
+- c/continue                             -> Exit debugger and continue running.
 - s/step <num>? (default 1)              -> Step the evaluation forwards <num> times.
 - r/rev <num>? (default 1)               -> Step the evaluation in reverse <num> times.
 - o/over                                 -> Step over evaluation of the current term.
@@ -96,7 +96,7 @@ let parse_breakpoint_fun s =
 ;;
 
 let parse_continue s =
-  match run_regex ~re:{|\(r\|run\|c\|continue\)|} ~group_nums:[] s with
+  match run_regex ~re:{|\(c\|continue\)|} ~group_nums:[] s with
   | Some [] -> Some Continue
   | _ -> None
 ;;
