@@ -142,6 +142,7 @@ and Eval : sig
     { c : expr_or_val
     ; e : env
     ; k : kontinuation list
+    ; state_idx : int
     }
 
   exception Breakpoint of cek list * cek
@@ -195,6 +196,7 @@ end = struct
     { c : expr_or_val
     ; e : env
     ; k : kontinuation list
+    ; state_idx : int
     }
 
   let lookup name env =
@@ -203,7 +205,8 @@ end = struct
     | None -> raise (UnboundVarError (name, env))
   ;;
 
-  let step ({ c = e_or_v; e = env; k = cs } : cek) : cek =
+  let step ({ c = e_or_v; e = env; k = cs; state_idx } : cek) : cek =
+    let state_idx = state_idx + 1 in
     let continue value (c : kontinuation) cs =
       let mk k = { c with x = k; breakpoint = false } in
       match c.x with
@@ -211,20 +214,26 @@ end = struct
         { c = CtrlValue (Value.of_bool (not (Value.to_bool value)))
         ; e = env
         ; k = cs
+        ; state_idx
         }
       | CBinOp1 (Hole, op, expr, env) ->
-        { c = CtrlExpr expr; e = env; k = mk (CBinOp2 (value, op, Hole)) :: cs }
+        { c = CtrlExpr expr
+        ; e = env
+        ; k = mk (CBinOp2 (value, op, Hole)) :: cs
+        ; state_idx
+        }
       | CBinOp2 (v', op, Hole) ->
         let result = Value.perform_bin_op (v', op, value) in
-        { c = CtrlValue result; e = env; k = cs }
+        { c = CtrlValue result; e = env; k = cs; state_idx }
       | CIf (Hole, exprTrue, exprFalse, env) ->
         { c = CtrlExpr (if Value.to_bool value then exprTrue else exprFalse)
         ; e = env
         ; k = cs
+        ; state_idx
         }
       | CLet (name, Hole, expr, env) ->
         let env' = Env.set name value env in
-        { c = CtrlExpr expr; e = env'; k = cs }
+        { c = CtrlExpr expr; e = env'; k = cs; state_idx }
       | CLetRec (name, Hole, expr, env) ->
         (* Only functions can be recursive *)
         let arg_name, body, env' = Value.to_func value in
@@ -232,23 +241,28 @@ end = struct
           Value.VFun (arg_name, body, lazy (Env.set name f (force env')))
         in
         let env' = Env.set name f env in
-        { c = CtrlExpr expr; e = env'; k = cs }
+        { c = CtrlExpr expr; e = env'; k = cs; state_idx }
       | CApply1 (Hole, expr, env) ->
-        { c = CtrlExpr expr; e = env; k = mk (CApply2 (value, Hole)) :: cs }
+        { c = CtrlExpr expr
+        ; e = env
+        ; k = mk (CApply2 (value, Hole)) :: cs
+        ; state_idx
+        }
       | CApply2 (v', Hole) -> begin
         match v' with
         | VContinuation konts ->
-          { c = CtrlValue value; e = env; k = konts @ cs }
+          { c = CtrlValue value; e = env; k = konts @ cs; state_idx }
         | VFunBuiltin builtin ->
           { c = CtrlValue (Value.perform_builtin builtin value)
           ; e = env
           ; k = cs
+          ; state_idx
           }
         | _ ->
           let name, body, env = Value.to_func v' in
           let env = force env in
           let env' = Env.set name value env in
-          { c = CtrlExpr body; e = env'; k = cs }
+          { c = CtrlExpr body; e = env'; k = cs; state_idx }
       end
       | CPerform (eff, Hole, saved_konts) -> begin
         match cs with
@@ -265,14 +279,15 @@ end = struct
               (Value.VContinuation (List.rev (deep_handler :: saved_konts)))
               env'
           in
-          { c = CtrlExpr handler.body; e = env'; k = cs }
+          { c = CtrlExpr handler.body; e = env'; k = cs; state_idx }
         | c :: cs ->
           { c = CtrlValue value
           ; e = env
           ; k = mk (CPerform (eff, Hole, c :: saved_konts)) :: cs
+          ; state_idx
           }
       end
-      | CHandler _ -> { e = env; c = CtrlValue value; k = cs }
+      | CHandler _ -> { e = env; c = CtrlValue value; k = cs; state_idx }
     in
     let translate_expr (e : Ast.expr) : cek =
       let make ?k c =
@@ -281,7 +296,7 @@ end = struct
           | None -> cs
           | Some k -> { e with x = k; breakpoint = false } :: cs
         in
-        { c; e = env; k }
+        { c; e = env; k; state_idx }
       in
       let make_ctrl_value v = make (CtrlValue v) in
       match e.x with
@@ -309,13 +324,19 @@ end = struct
       | MkHandle (body, handler) ->
         make ~k:(CHandler (handler, env)) @@ CtrlExpr body
     in
-    match e_or_v with
-    | CtrlValue v -> begin
-      match cs with
-      | [] -> failwith "Internal error: No continuation to pass value to."
-      | c :: cs -> continue v c cs
-    end
-    | CtrlExpr e -> translate_expr e
+    let next_state =
+      match e_or_v with
+      | CtrlValue v -> begin
+        match cs with
+        | [] -> failwith "Internal error: No continuation to pass value to."
+        | c :: cs -> continue v c cs
+      end
+      | CtrlExpr e -> translate_expr e
+    in
+    (* Verify that no matter which reduction rule applied, the state_idx is as
+       expected. *)
+    assert (next_state.state_idx = state_idx);
+    next_state
   ;;
 
   type history = cek list
@@ -338,8 +359,12 @@ end = struct
       Option.map ~f:(fun old_history -> state :: old_history) old_history
     in
     match state with
-    | { c = CtrlValue v; e = _; k = [] } -> v, history
-    | { c = CtrlValue _; e = _; k = ({ breakpoint = true; _ } as kk) :: _ } ->
+    | { c = CtrlValue v; e = _; k = []; state_idx = _ } -> v, history
+    | { c = CtrlValue _
+      ; e = _
+      ; k = ({ breakpoint = true; _ } as kk) :: _
+      ; state_idx = _
+      } ->
       kk.breakpoint <- false;
       raise (Breakpoint (Option.value_exn old_history, state))
     | { c = CtrlExpr { breakpoint = true; _ }; _ } when not ignore_bp ->
@@ -355,7 +380,7 @@ end = struct
   ;;
 
   let eval ~source:_ expr =
-    let cek = { c = CtrlExpr expr; e = builtins_env; k = [] } in
+    let cek = { c = CtrlExpr expr; e = builtins_env; k = []; state_idx = 0 } in
     let value, _ = driver cek in
     value
   ;;
@@ -393,7 +418,6 @@ end = struct
     in
     let hole = "⬤" in
     let sprintf = Printf.sprintf in
-    (* TODO: Show [env]. *)
     match k.x with
     | CNot Hole -> sprintf "not %s" hole
     | CBinOp1 (Hole, EMkTuple, expr, _env) ->
@@ -451,7 +475,7 @@ end = struct
       sprintf "handler <%s>" handled_effects
   ;;
 
-  let stringify_cek source { c; e; k } =
+  let stringify_cek source { c; e; k; state_idx = _ } =
     let string_of_expr_or_val = function
       | CtrlExpr expr ->
         "T: "
@@ -468,7 +492,9 @@ end = struct
   let print_cek ~source cek =
     Util.print_table
       ~header:("C", "E", "K")
+      ~width_ratio:(4, 3, 5)
       ~stringify:(stringify_cek source)
+      ~starting_idx:cek.state_idx
       [ cek ]
   ;;
 
@@ -588,7 +614,7 @@ end = struct
           ~print_state:true
           { history; current_cek; full_expr = expr }
     in
-    let cek = { c = CtrlExpr expr; e = builtins_env; k = [] } in
+    let cek = { c = CtrlExpr expr; e = builtins_env; k = []; state_idx = 0 } in
     let value, history =
       loop (fun () ->
         driver ~history:[] ?times:(if break_at_start then Some 0 else None) cek)

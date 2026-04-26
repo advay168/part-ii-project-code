@@ -1,9 +1,10 @@
 open! Base
 
+type 'a triple = 'a * 'a * 'a
 type ansi = Terminal.Style.t
 
 let with_ansi ansis s =
-  let convert = Terminal.Style.code in
+  let convert : ansi -> string = Terminal.Style.code in
   String.concat (List.map ~f:convert ansis) ^ s ^ convert Terminal.Style.none
 ;;
 
@@ -15,72 +16,96 @@ let utf_pad_right ~pad width s =
   s ^ repeat pad (width - w)
 ;;
 
-let[@tail_mod_cons] rec zip3_longest lst =
+let[@tail_mod_cons] rec zip4_longest lst =
   let uncons = function
     | [] -> "", []
     | x :: xs -> x, xs
   in
   match lst with
-  | [], [], [] -> []
-  | xs, ys, zs ->
+  | [], [], [], [] -> []
+  | xs, ys, zs, ws ->
     let x, xs = uncons xs in
     let y, ys = uncons ys in
     let z, zs = uncons zs in
-    (x, y, z) :: zip3_longest (xs, ys, zs)
+    let w, ws = uncons ws in
+    let hd = x, y, z, w in
+    let tl = xs, ys, zs, ws in
+    hd :: zip4_longest tl
 ;;
 
-let table_width_ratioed w = w * 4 / 12, w * 3 / 12, w * 5 / 12
-
-let print_table ~header:(ch, eh, kh) ~stringify lst =
-  let w = (Terminal.Size.get_columns () |> Option.value ~default:85) - 10 in
-  let w1, w2, w3 = table_width_ratioed w in
-  let break w xs =
-    List.fold
-      (String.split ~on:' ' xs |> List.rev)
-      ~init:[ "" ]
-      ~f:(fun lst x ->
-        match lst with
-        | [] -> assert false
-        | current :: rest ->
-          if utf_width current + utf_width x >= w
-          then x :: current :: rest
-          else (x ^ " " ^ current) :: rest)
+let print_table
+      ~header:(h1, h2, h3)
+      ~width_ratio:(r1, r2, r3)
+      ~stringify
+      ~starting_idx
+      lst
+  =
+  let wn =
+    let highest_n = starting_idx + List.length lst in
+    String.length (Int.to_string highest_n)
+  in
+  let w1, w2, w3 =
+    let w =
+      (Terminal.Size.get_columns () |> Option.value ~default:85) - 13 - wn
+    in
+    let ratio_total = r1 + r2 + r3 in
+    w * r1 / ratio_total, w * r2 / ratio_total, w * r3 / ratio_total
   in
   let rows =
+    let break w xs =
+      List.fold
+        (String.split ~on:' ' xs |> List.rev)
+        ~init:[ "" ]
+        ~f:(fun lst x ->
+          match lst with
+          | [] -> assert false
+          | current :: rest ->
+            if utf_width current + utf_width x >= w
+            then x :: current :: rest
+            else (x ^ " " ^ current) :: rest)
+    in
     let mapper w s =
       s
       |> List.intersperse ~sep:(repeat "─" (w - 1))
       |> List.concat_map ~f:String.split_lines
       |> List.concat_map ~f:(break w)
     in
-    List.map
-      ~f:(fun x ->
+    List.mapi
+      ~f:(fun idx x ->
         let s1, s2, s3 = stringify x in
-        mapper w1 s1, mapper w2 s2, mapper w3 s3)
+        ( [ Int.to_string @@ (starting_idx + idx) ]
+        , mapper w1 s1
+        , mapper w2 s2
+        , mapper w3 s3 ))
       lst
   in
-  let print_seps left mid right =
-    Stdio.print_endline
-      (left
-       ^ String.concat
-           ~sep:mid
-           (List.map ~f:(fun l -> repeat "─" (l + 2)) [ w1; w2; w3 ])
-       ^ right)
+  let print_seperators left_sep mid_sep right_sep =
+    let sep_string =
+      String.concat
+        [ left_sep
+        ; String.concat ~sep:mid_sep
+          @@ List.map ~f:(fun l -> repeat "─" (l + 2)) [ wn; w1; w2; w3 ]
+        ; right_sep
+        ]
+    in
+    Stdio.print_endline sep_string
   in
   let print_row horizontal_sep row =
     let go =
-      fun (c, e, k) ->
+      fun (idx, a, b, c) ->
       Stdlib.Printf.printf
-        "│ %s │ %s │ %s │\n"
-        (utf_pad_right ~pad:" " w1 c)
-        (utf_pad_right ~pad:" " w2 e)
-        (utf_pad_right ~pad:" " w3 k)
+        "│ %s │ %s │ %s │ %s │\n"
+        (utf_pad_right ~pad:" " wn idx)
+        (utf_pad_right ~pad:" " w1 a)
+        (utf_pad_right ~pad:" " w2 b)
+        (utf_pad_right ~pad:" " w3 c)
     in
-    if horizontal_sep then print_seps "├" "┼" "┤";
-    zip3_longest row |> List.iter ~f:go
+    if horizontal_sep then print_seperators "├" "┼" "┤";
+    let screen_rows = zip4_longest row in
+    List.iter ~f:go screen_rows
   in
-  print_seps "┌" "┬" "┐";
-  print_row false ([ ch ], [ eh ], [ kh ]);
+  print_seperators "┌" "┬" "┐";
+  print_row false ([ "n" ], [ h1 ], [ h2 ], [ h3 ]);
   rows |> List.iter ~f:(print_row true);
-  print_seps "└" "┴" "┘"
+  print_seperators "└" "┴" "┘"
 ;;
