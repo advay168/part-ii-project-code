@@ -137,6 +137,7 @@ and Eval : sig
     | CApply2 of Value.t * hole
     | CPerform of Var.t * hole * kontinuation list
     | CHandler of Ast.handler list * env
+    | CIOHandler
 
   type cek =
     { c : expr_or_val
@@ -158,7 +159,7 @@ and Eval : sig
     -> cek
     -> Value.t * cek list option
 
-  val builtins_env : env
+  val initial_state : Ast.expr -> cek
 end = struct
   exception TypeError of string * Value.t
   exception UnboundVarError of Var.t * Value.t Env.t
@@ -190,6 +191,7 @@ end = struct
     | CApply2 of Value.t * hole
     | CPerform of Language.Var.t * hole * kontinuation list
     | CHandler of Ast.handler list * env
+    | CIOHandler
   [@@deriving sexp_of]
 
   type cek =
@@ -203,6 +205,23 @@ end = struct
     match Env.get name env with
     | Some v -> v
     | None -> raise (UnboundVarError (name, env))
+  ;;
+
+  let io_handlers =
+    let print_handler =
+      ( Var.make "Print"
+      , fun value ->
+          Value.to_string value |> Stdio.print_endline;
+          Value.VUnit )
+    in
+    let input_handler =
+      ( Var.make "Input"
+      , fun _value ->
+          let input = Stdio.In_channel.input_line_exn Stdio.stdin in
+          let integer = Int.of_string input in
+          Value.VInt integer )
+    in
+    [ print_handler; input_handler ]
   ;;
 
   let step ({ c = e_or_v; e = env; k = cs; state_idx } : cek) : cek =
@@ -267,6 +286,18 @@ end = struct
       | CPerform (eff, Hole, saved_konts) -> begin
         match cs with
         | [] -> raise (UnhandledEffect (eff, value))
+        | { x = CIOHandler; _ } :: _
+          when List.exists io_handlers ~f:(fun (name, _handler) ->
+                 Var.equal name eff) ->
+          let _name, handler =
+            List.find_exn io_handlers ~f:(fun (name, _handler) ->
+              Var.equal name eff)
+          in
+          { c = CtrlValue (handler value)
+          ; e = env
+          ; k = List.rev saved_konts @ cs
+          ; state_idx
+          }
         | ({ x = CHandler (handlers, env); _ } as deep_handler) :: cs
           when List.exists handlers ~f:(fun h -> Var.equal h.eff eff) ->
           let handler =
@@ -288,6 +319,7 @@ end = struct
           }
       end
       | CHandler _ -> { e = env; c = CtrlValue value; k = cs; state_idx }
+      | CIOHandler -> { e = env; c = CtrlValue value; k = cs; state_idx }
     in
     let translate_expr (e : Ast.expr) : cek =
       let make ?k c =
@@ -379,8 +411,16 @@ end = struct
     |> Env.set ~hidden:true (Var.make "snd") (Value.VFunBuiltin Snd)
   ;;
 
+  let initial_state expr =
+    { c = CtrlExpr expr
+    ; e = builtins_env
+    ; k = [ Ast.make (Lexing.dummy_pos, Lexing.dummy_pos) CIOHandler ]
+    ; state_idx = 0
+    }
+  ;;
+
   let eval ~source:_ expr =
-    let cek = { c = CtrlExpr expr; e = builtins_env; k = []; state_idx = 0 } in
+    let cek = initial_state expr in
     let value, _ = driver cek in
     value
   ;;
@@ -473,6 +513,7 @@ end = struct
         |> String.concat ~sep:", "
       in
       sprintf "handler <%s>" handled_effects
+    | CIOHandler -> "IOhandler"
   ;;
 
   let stringify_cek source { c; e; k; state_idx = _ } =
@@ -614,7 +655,7 @@ end = struct
           ~print_state:true
           { history; current_cek; full_expr = expr }
     in
-    let cek = { c = CtrlExpr expr; e = builtins_env; k = []; state_idx = 0 } in
+    let cek = Eval.initial_state expr in
     let value, history =
       loop (fun () ->
         driver ~history:[] ?times:(if break_at_start then Some 0 else None) cek)
