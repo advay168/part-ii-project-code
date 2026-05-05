@@ -1,3 +1,5 @@
+(* Measures memory usage which is shown in the evaluation chapter. *)
+
 open! Base
 open Cmdliner
 open Cmdliner.Term.Syntax

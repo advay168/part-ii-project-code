@@ -31,6 +31,7 @@ let eval ~debug ~verbose filename code =
       (Interpreter.Value.to_string value)
 ;;
 
+(* cmdline argument representing an input Effektra program. *)
 let prog =
   let doc =
     "$(docv) is a file containing the program. Use $(b,-) for $(b,stdin)."

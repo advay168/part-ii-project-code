@@ -47,41 +47,58 @@ prog:
 
 expr:  
   | int = INT
-      { make $loc (MkInt     (int)             ) }
+      { make $loc (MkInt int) }
+
   | bool = BOOL
-      { make $loc (MkBool    (bool)            ) }
+      { make $loc (MkBool bool) }
+
   | LPAREN; RPAREN
-      { make $loc (MkUnit                      ) }
+      { make $loc (MkUnit) }
+
   | LPAREN; e1 = expr; COMMA; e2 = expr; RPAREN
-      { make $loc (MkBinOp   (e1, EMkTuple, e2)) }
+      { make $loc (MkBinOp (e1, EMkTuple, e2)) }
+
   | e1 = expr; PLUS; e2 = expr
-      { make $loc (MkBinOp   (e1, IAdd, e2)    ) }
+      { make $loc (MkBinOp (e1, IAdd, e2)) }
+
   | e1 = expr; MULT; e2 = expr
-      { make $loc (MkBinOp   (e1, IMul, e2)    ) }
+      { make $loc (MkBinOp (e1, IMul, e2)) }
+
   | e1 = expr; BOR; e2 = expr
-      { make $loc (MkBinOp   (e1, BOr, e2)     ) }
+      { make $loc (MkBinOp (e1, BOr, e2)) }
+
   | e1 = expr; BAND; e2 = expr
-      { make $loc (MkBinOp   (e1, BAnd, e2)    ) }
+      { make $loc (MkBinOp (e1, BAnd, e2)) }
+
   | BNOT; e = expr
-      { make $loc (MkNot     (e)               ) }
+      { make $loc (MkNot e) }
+
   | e1 = expr; EQUALS; e2 = expr
-      { make $loc (MkBinOp   (e1, IEql, e2)    ) }
+      { make $loc (MkBinOp (e1, IEql, e2)) }
+
   | IF; e1 = expr; THEN; e2 = expr; ELSE; e3 = expr; END
-      { make $loc (MkIf      (e1, e2, e3)      ) }
+      { make $loc (MkIf (e1, e2, e3)) }
+
   | name = IDENT
-      { make $loc (MkVar     (Var.make name)   ) }
+      { make $loc (MkVar (Var.make name)) }
+
   | LET; name = IDENT; DEF_EQUALS; e1 = expr; IN; e2 = expr; END
-      { make $loc (MkLet     (Var.make name, e1, e2)    ) }
+      { make $loc (MkLet (Var.make name, e1, e2)) }
+
   | FUN; name = IDENT; ARROW; e = expr; END
-      { make $loc (MkFun     (Var.make name, e)) }
+      { make $loc (MkFun (Var.make name, e)) }
+
   | e1 = expr; e2 = expr %prec APPLY
-      { make $loc (MkApply   (e1, e2)          ) }
+      { make $loc (MkApply (e1, e2)) }
+
   | PERFORM; LPAREN; eff = IDENT; e = expr; RPAREN
-      { make $loc (MkPerform (Var.make eff, e) ) }
+      { make $loc (MkPerform (Var.make eff, e)) }
+
   | HANDLE; e1 = expr; WITH; hs = nonempty_list(handler); END
-      { make $loc (MkHandle  (e1, hs)          ) }
+      { make $loc (MkHandle (e1, hs)) }
+
   | LPAREN; e = expr; RPAREN
-      { make $loc (e.x                         ) }
+      { make $loc e.x }
 
 handler:
   | BAR; eff = IDENT; COMMA; arg = IDENT; COMMA; kont = IDENT; ARROW; body = expr {

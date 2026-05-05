@@ -2,6 +2,8 @@ open! Base
 
 exception ParseError of string
 
+(** Verifies that any compound effect handler does not handle the same effect
+    name twice. *)
 let rec validate_distinct_handlers (expr : Ast.expr) =
   match expr.x with
   | Ast.MkInt _ -> ()

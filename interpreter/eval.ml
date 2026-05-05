@@ -7,8 +7,9 @@ module Builtins = struct
     | Snd
 end
 
-(* Mutually recursive modules as [Value.t] depends on [Eval.continuation]. *)
+(* Mutually recursive modules as [Value.t] depends on [Eval.Kontinuation]. *)
 module rec Value : sig
+  (** Type of Effektra values. *)
   type t =
     | VInt of int
     | VBool of bool
@@ -21,7 +22,13 @@ module rec Value : sig
   val sexp_of_t : t -> Sexp.t
   val to_string : t -> string
 
+  (* The following are helper functions to wrap/unwrap Effektra values to
+     OCaml values. They raise [Eval.TypeError] if the dynamic type is wrong.
+     *)
+
   (* val to_int : t -> int *)
+
+  (** Raises if not an int. *)
   val of_int : int -> t
 
   (** Raises if not a bool. *)
@@ -40,6 +47,7 @@ module rec Value : sig
   (** Raises if types not appropriate. *)
   val perform_builtin : Builtins.t -> t -> t
 end = struct
+  (** Type of Effektra values. *)
   type t =
     | VInt of int
     | VBool of bool
@@ -106,16 +114,25 @@ end = struct
 end
 
 and Eval : sig
+  (** Raised when Effektra code tries to use an incorrect type in an operation.
+ *)
   exception TypeError of string * Value.t
+
+  (** Raised when an attempt is made to access an unbound Effektra variable. *)
   exception UnboundVarError of Var.t * Value.t Env.t
+
+  (** Raised when a [perform]ed effect is not handled. *)
   exception UnhandledEffect of Var.t * Value.t
 
-  (* type kontinuation = kontinuation' Ast.annotated *)
-  (* and kontinuation' *)
-
+  (** Evaluate an Effektra AST (which was formed from [source]) to a value or
+      loop indefinitely. *)
   val eval : source:string -> Language.Ast.expr -> Value.t
 
-  (* For Debugger. *)
+  (* Following are exposed so that [Debugger] has visibility into internals.
+     Not exposed outside this file because [eval.mli] has a restricted
+     interface.
+     *)
+
   type expr_or_val =
     | CtrlExpr of Ast.expr
     | CtrlValue of Value.t
@@ -146,7 +163,8 @@ and Eval : sig
     ; state_idx : int
     }
 
-  exception Breakpoint of cek list * cek
+  (** Raised when interpreter wants to pass control to debugger. *)
+  exception BreakpointTriggered of cek list * cek
 
   (** [times] refers to the number of times to run before breakpointing. 
       [ignore_bp] means to not trigger any AST breakpoints on this step. Useful
@@ -159,6 +177,8 @@ and Eval : sig
     -> cek
     -> Value.t * cek list option
 
+  (** Constructs an initial [cek] state given an Effektra AST. Sets builtin
+        functions and IO handler. *)
   val initial_state : Ast.expr -> cek
 end = struct
   exception TypeError of string * Value.t
@@ -207,6 +227,7 @@ end = struct
     | None -> raise (UnboundVarError (name, env))
   ;;
 
+  (** Builtin IO handlers for [Print] and [Input]. *)
   let io_handlers =
     let print_handler =
       ( Var.make "Print"
@@ -226,6 +247,7 @@ end = struct
 
   let step ({ c = e_or_v; e = env; k = cs; state_idx } : cek) : cek =
     let state_idx = state_idx + 1 in
+    (* Called when [cek.c] is a [CtrlValue]. *)
     let continue value (c : kontinuation) cs =
       let mk k = { c with x = k; breakpoint = false } in
       match c.x with
@@ -321,6 +343,7 @@ end = struct
       | CHandler _ -> { e = env; c = CtrlValue value; k = cs; state_idx }
       | CIOHandler -> { e = env; c = CtrlValue value; k = cs; state_idx }
     in
+    (* Called when [cek.c] is a [CtrlExpr]. *)
     let translate_expr (e : Ast.expr) : cek =
       let make ?k c =
         let k =
@@ -360,6 +383,7 @@ end = struct
       match e_or_v with
       | CtrlValue v -> begin
         match cs with
+        (* Should not occur if [driver] is the caller. *)
         | [] -> failwith "Internal error: No continuation to pass value to."
         | c :: cs -> continue v c cs
       end
@@ -373,7 +397,7 @@ end = struct
 
   type history = cek list
 
-  exception Breakpoint of history * cek
+  exception BreakpointTriggered of history * cek
 
   (** [times] refers to the number of times to run before breakpointing. 
       [ignore_bp] means to not trigger any AST breakpoints on this step. Useful
@@ -381,27 +405,35 @@ end = struct
    *)
   let rec driver ?(ignore_bp = false) ?times ?history:old_history state =
     let times =
+      (* Raise breakpoint if [times=0] and not ignoring breakpoints. *)
       match times with
       | Some 0 when not ignore_bp ->
-        raise (Breakpoint (Option.value_exn old_history, state))
+        raise (BreakpointTriggered (Option.value_exn old_history, state))
       | Some n -> Some (n - 1)
       | None -> None
     in
     let history =
+      (* Append state if history is being tracked. *)
       Option.map ~f:(fun old_history -> state :: old_history) old_history
     in
     match state with
     | { c = CtrlValue v; e = _; k = []; state_idx = _ } -> v, history
     | { c = CtrlValue _
       ; e = _
-      ; k = ({ breakpoint = true; _ } as kk) :: _
+      ; k = ({ breakpoint = true; _ } as k) :: _
       ; state_idx = _
       } ->
-      kk.breakpoint <- false;
-      raise (Breakpoint (Option.value_exn old_history, state))
+      (* [cek.c] is a [CtrlValue] and [cek.k] has [breakpoint] set. *)
+      (* Don't print ["Breakpoint hit"] as this is ised only by the step over
+         command where this message does not make sense. *)
+      k.breakpoint <- false;
+      (* Reset [breakpoint] so it is not triggered again
+      (if resumed as multi-shot). *)
+      raise (BreakpointTriggered (Option.value_exn old_history, state))
     | { c = CtrlExpr { breakpoint = true; _ }; _ } when not ignore_bp ->
+      (* [cek.c] is a [CtrlExpr] and has [breakpoint] set. *)
       Stdio.print_endline "Breakpoint hit";
-      raise (Breakpoint (Option.value_exn old_history, state))
+      raise (BreakpointTriggered (Option.value_exn old_history, state))
     | _ -> driver ?history ?times (step state)
   ;;
 
@@ -427,6 +459,10 @@ end = struct
 end
 
 and Debugger : sig
+  (** Evaluate an Effektra AST (which was formed from [source]) to a value or
+      loop indefinitely. Also returns a list of all intermediate [cek] states.
+      [break_at_start] controls if the debugger is activated at the start; the
+      default is true. *)
   val eval
     :  ?break_at_start:bool
     -> source:string
@@ -437,12 +473,16 @@ and Debugger : sig
 end = struct
   open Eval
 
+  (** Record containing debugger state. *)
   type dbg_state =
     { history : cek list
     ; current_cek : cek
     ; full_expr : Ast.expr
+      (** Needed to set breakpoints outside the scope of
+    the current [cek.c] expression. *)
     }
 
+  (** Prompts the user and returns a debugger comamnd. *)
   let prompt () =
     Stdio.print_string "debugger> ";
     Debugger_cmd_parser.parse (Stdio.In_channel.input_line_exn Stdio.stdin)
@@ -450,7 +490,8 @@ end = struct
 
   let string_of_env = Env.string_of_t Value.to_string
 
-  let rec stringify_kont ~source (k : kontinuation) =
+  (** Uses [source] to display a [kontinuation]. *)
+  let rec stringify_kontinuation ~source (k : kontinuation) =
     let module Expr =
       Ast.Make_to_string (struct
         let source = source
@@ -495,12 +536,13 @@ end = struct
       let captured_ks =
         ks
         |> List.rev
-        |> List.map ~f:(stringify_kont ~source)
+        |> List.map ~f:(stringify_kontinuation ~source)
         |> String.concat ~sep:", "
         |> String.tr ~target:'\r' ~replacement:' '
         |> String.tr ~target:'\n' ~replacement:' '
       in
       let captured_ks =
+        (* Elide [kontinuation] descriptions if there are too many. *)
         if Terminal.guess_printed_width captured_ks < 50
         then captured_ks
         else Int.to_string (List.length ks) ^ " konts"
@@ -516,6 +558,8 @@ end = struct
     | CIOHandler -> "IOhandler"
   ;;
 
+  (** Takes a [cek] state and original Effektra source code to stringify the
+      state into a list of rows for each component. *)
   let stringify_cek source { c; e; k; state_idx = _ } =
     let string_of_expr_or_val = function
       | CtrlExpr expr ->
@@ -525,7 +569,8 @@ end = struct
         s
       | CtrlValue value -> "V: " ^ Value.to_string value
     in
-    let string_of_k = List.map ~f:(stringify_kont ~source) in
+    let string_of_k = List.map ~f:(stringify_kontinuation ~source) in
+    (* Suppress annotations ([span]/[breakpoint]). *)
     Language.Ast.without_showing_anns (fun () ->
       [ string_of_expr_or_val c ], [ string_of_env e ], string_of_k k)
   ;;
@@ -539,17 +584,26 @@ end = struct
       [ cek ]
   ;;
 
-  let rec debugger ?(print_state = false) ~source state =
-    match state with
+  (** [debugger] is to be invoked whenever the interpeter raises
+      [BreakpointTriggered]. [print_state] controls if the [cek] state is
+      printed before the user prompt. Eventually returns control to the
+      interpreter by invoking [driver] again. *)
+  let rec debugger ?(print_state = false) ~source dbg_state =
+    match dbg_state with
     | { history; current_cek; full_expr } ->
       if print_state then print_cek ~source current_cek;
       begin match prompt () with
-      | Nop -> debugger ~source state
+      | Nop -> debugger ~source dbg_state
       | Help ->
         Stdio.print_string Debugger_cmd_parser.help_text;
-        debugger ~source state
-      | Continue -> driver ~ignore_bp:true ?times:None ~history current_cek
+        debugger ~source dbg_state
+      | Continue ->
+        (* [ignore_bp] set in case the current [cek] has a breakpoint which we
+           want to skip over. *)
+        driver ~ignore_bp:true ?times:None ~history current_cek
       | Stepover -> begin
+        (* Set a breakpoint on the top of the [cek.k]-stack if currently
+           evaluating a [CtrlExpr]. If a value, perform a normal step. *)
         match current_cek.c with
         | CtrlExpr _ ->
           begin match current_cek.k with
@@ -557,26 +611,29 @@ end = struct
           | k :: _ -> k.breakpoint <- true
           end;
           driver ~ignore_bp:true ?times:None ~history current_cek
-        | CtrlValue _ -> debugger ~print_state:true ~source state
+        | CtrlValue _ -> debugger ~print_state:true ~source dbg_state
       end
       | StepFwd n -> driver ~ignore_bp:true ~history ~times:n current_cek
       | StepBck n ->
-        (* Pop the first n entries *)
+        (* Pop the first n entries. *)
         let new_history = List.drop history n in
         let new_cek =
-          (* Want the (n-1)th state *)
+          (* Want the (n-1)th state. *)
           match List.nth history (n - 1) with
           | Some cek -> cek
           | None ->
-            Stdio.print_endline "Tried to go back too far. Going back to start.";
+            Stdio.print_endline "Tried to go back too far. Rewinding to start.";
             List.last_exn (current_cek :: history)
         in
         debugger
           ~print_state:true
           ~source
           { history = new_history; current_cek = new_cek; full_expr }
-      | ShowState -> debugger ~print_state:true ~source state
+      | ShowState -> debugger ~print_state:true ~source dbg_state
       | Where ->
+        (* Highlight code executing currently by looking at [annotated.span].
+           Print the entire source code highlighting with ANSI codes if in an
+           interactive terminal otherwise only print plaintext. *)
         let display_source annotated =
           let prefix, code_to_highlight, suffix =
             Ast.split_source_by_annotated source annotated
@@ -599,37 +656,40 @@ end = struct
           | CtrlExpr expr -> display_source expr
           | CtrlValue _ -> display_source (List.hd_exn current_cek.k)
         in
-        debugger ~source state
+        debugger ~source dbg_state
       | BreakpointLoc (set, pos) ->
         let success = Ast.mark_breakpoint_loc ~set pos full_expr in
         if success
         then Stdio.print_endline "Breakpoint set."
         else Stdio.print_endline "Could not set breakpoint.";
-        debugger ~source state
+        debugger ~source dbg_state
       | BreakpointEff (set, eff) ->
         let count = Ast.mark_perform ~set eff full_expr in
         if count > 0
         then Stdio.print_endline "Breakpoint set."
         else Stdio.print_endline "Could not set breakpoint.";
-        debugger ~source state
+        debugger ~source dbg_state
       | BreakpointFun (set, fun_name) ->
         let count = Ast.mark_fun_app ~set fun_name full_expr in
         if count > 0
         then Stdio.print_endline "Breakpoint set."
         else Stdio.print_endline "Could not set breakpoint.";
-        debugger ~source state
+        debugger ~source dbg_state
       | Inspect svar -> begin
         let var = Var.make svar in
         match Env.get var current_cek.e with
         | None ->
           Stdio.printf "Variable `%s` not present\n" svar;
-          debugger ~source state
+          debugger ~source dbg_state
         | Some value ->
           begin match value with
           | VContinuation konts ->
+            (* Use the same visualisation used in printing [cek] states to
+               print only a kontinuation. Special-cased because
+               [Value.to_string] by default only returns ["kont"]. *)
             let stringified =
               konts
-              |> List.map ~f:(stringify_kont ~source)
+              |> List.map ~f:(stringify_kontinuation ~source)
               |> String.concat ~sep:"\n--------------------------\n"
             in
             Stdio.print_endline stringified
@@ -639,15 +699,18 @@ end = struct
             in
             Stdio.print_endline stringified
           end;
-          debugger ~source state
+          debugger ~source dbg_state
       end
       end
   ;;
 
   let eval ?(break_at_start = true) ~source expr =
+    (* [loop] is a recursive helper function that evaluates its thunk with the
+       debugger installed. Needed to ensure the debugger remains installed on
+       resuming too. *)
     let rec loop thunk =
       try thunk () with
-      | Eval.Breakpoint (history, current_cek) ->
+      | Eval.BreakpointTriggered (history, current_cek) ->
         loop
         @@ fun () ->
         debugger

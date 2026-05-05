@@ -1,8 +1,13 @@
 open! Base
 
+(** Controls whether the source location is present when converting to sexp. *)
 let show_anns = ref true
+
+(** Utility function that evaluates its argument thunk with [show_anns] set to
+    false. *)
 let without_showing_anns f = Ref.set_temporarily show_anns false ~f
 
+(** Span of source code. *)
 type span = Lexing.position * Lexing.position
 
 let linecol_of_span ((startpos, endpos) : span) =
@@ -19,6 +24,7 @@ type 't annotated =
   ; mutable breakpoint : bool
   }
 
+(** Makes an annotated value setting [breakpoint] to [false]. *)
 let make span x = { span; x; breakpoint = false }
 
 (* Custom sexpifier which is less verbose than that which would be generated. *)
@@ -37,10 +43,12 @@ let sexp_of_annotated sexp_of_t { span; x; breakpoint } =
   |> Sexp.List
 ;;
 
+(** Splits source code into [prefix, delimited, suffix] based on [span] field.
+ *)
 let split_source_by_annotated source expr =
   let start, end_ = expr.span in
   let prefix = String.sub source ~pos:0 ~len:start.pos_cnum in
-  let middle =
+  let delimited =
     String.sub source ~pos:start.pos_cnum ~len:(end_.pos_cnum - start.pos_cnum)
   in
   let suffix =
@@ -49,7 +57,7 @@ let split_source_by_annotated source expr =
       ~pos:end_.pos_cnum
       ~len:(String.length source - end_.pos_cnum)
   in
-  prefix, middle, suffix
+  prefix, delimited, suffix
 ;;
 
 type binOp =
@@ -70,6 +78,7 @@ let bin_op_to_string = function
   | EMkTuple -> ","
 ;;
 
+(** Effektra AST *)
 type expr = expr' annotated
 
 and expr' =
@@ -87,13 +96,15 @@ and expr' =
   | MkHandle of expr * handler list
 
 and handler =
-  { eff : Var.t
-  ; arg : Var.t
-  ; kont : Var.t
-  ; body : expr
+  { eff : Var.t (** Name of effect which is handled. *)
+  ; arg : Var.t (** Name to which payload is to be bound. *)
+  ; kont : Var.t (** Name to which the captured kontinuation is to be bound. *)
+  ; body : expr (** Handler body. *)
   }
 [@@deriving sexp_of]
 
+(** Higher-order [marker] abstraction to set breakpoints under different
+    conditions. *)
 let rec marker ~set (f : expr' -> bool) (e : expr) =
   let count =
     if f e.x
@@ -124,6 +135,8 @@ let rec marker ~set (f : expr' -> bool) (e : expr) =
   count + rec_count
 ;;
 
+(** Sets a breakpoint in any AST node which performs the specified effect name.
+ *)
 let mark_perform ~set name =
   let var_name = Var.make name in
   marker ~set
@@ -132,6 +145,8 @@ let mark_perform ~set name =
   | _ -> false
 ;;
 
+(** Sets a breakpoint in any AST node which applies a function of the given
+    name. *)
 let mark_fun_app ~set name =
   let var_name = Var.make name in
   marker ~set
@@ -140,6 +155,9 @@ let mark_fun_app ~set name =
   | _ -> false
 ;;
 
+(** Checks if source code position ([line, col]) is contained within a [span].
+    The logic checks if [line] is contained and also checks if [col] is
+    contained if [line] is on an endpoint of [span]. *)
 let within (line, col) (span : span) =
   let (sl, sc), (el, ec) = linecol_of_span span in
   if line < sl || line > el
@@ -151,6 +169,9 @@ let within (line, col) (span : span) =
   else true
 ;;
 
+(** Sets a breakpoint in atmost one AST node, if it is the most specific node
+    spanning the argument position. This and the following functions take a
+    [set] parameter which can be used to unset a breakpoint. *)
 let rec mark_breakpoint_loc ~set loc (e : expr) : bool =
   if not (within loc e.span)
   then false
@@ -184,6 +205,9 @@ let rec mark_breakpoint_loc ~set loc (e : expr) : bool =
   end
 ;;
 
+(** Utility functor module which takes a source code string and generates a
+    module which uses the [span] field to display an [annotated] value to a
+    string. Needed for using some ppx (preprocessing) extensions. *)
 module Make_to_string =
 functor
   (M : sig

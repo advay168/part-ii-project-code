@@ -1,5 +1,6 @@
 open! Base
 
+(** Enum of debugger commands. *)
 type cmd =
   | Help
   | BreakpointLoc of bool * (int * int)
@@ -14,6 +15,7 @@ type cmd =
   | StepBck of int
   | Stepover
 
+(** Text to be printed with help command. *)
 let help_text =
   {|Help for debugger commands:
 - h/help                                 -> Print this help text.
@@ -33,6 +35,7 @@ let help_text =
 |}
 ;;
 
+(** Runs regex against string and extracts regex groups on match. *)
 let run_regex s ~re ~group_nums =
   let re = Str.regexp ("^" ^ re ^ "$") in
   if Str.string_match re s 0
@@ -69,6 +72,7 @@ let parse_breakpoint_loc s =
   | _ -> None
 ;;
 
+(** Helper regex to match Effektra identifiers. *)
 let ident_group = {|\([a-zA-z_][0-9a-zA-z_]*\)|}
 
 let parse_breakpoint_eff s =
@@ -157,6 +161,7 @@ let parse_step_bck s =
   else None
 ;;
 
+(** List of parsers for each debugger command. *)
 let parsers =
   [ parse_help
   ; parse_breakpoint_loc
@@ -173,6 +178,7 @@ let parsers =
   ]
 ;;
 
+(** Returns the result of the first parser that succeeds. *)
 let parse s =
   let parsed =
     parsers
