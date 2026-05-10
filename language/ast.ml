@@ -60,6 +60,8 @@ let split_source_by_annotated source expr =
   prefix, delimited, suffix
 ;;
 
+type unOp = UNot [@@deriving sexp_of]
+
 type binOp =
   | IAdd
   | IMul
@@ -86,7 +88,7 @@ and expr' =
   | MkBool of bool
   | MkUnit
   | MkBinOp of expr * binOp * expr
-  | MkNot of expr
+  | MkUnary of unOp * expr
   | MkIf of expr * expr * expr
   | MkVar of Var.t
   | MkLet of Var.t * expr * expr
@@ -119,7 +121,7 @@ let rec marker ~set (f : expr' -> bool) (e : expr) =
     | MkBool _ -> 0
     | MkUnit -> 0
     | MkBinOp (e1, _, e2) -> marker ~set f e1 + marker ~set f e2
-    | MkNot e -> marker ~set f e
+    | MkUnary (_, e) -> marker ~set f e
     | MkIf (e1, e2, e3) ->
       marker ~set f e1 + marker ~set f e2 + marker ~set f e3
     | MkVar _ -> 0
@@ -183,7 +185,7 @@ let rec mark_breakpoint_loc ~set loc (e : expr) : bool =
       | MkUnit -> false
       | MkBinOp (e1, _, e2) ->
         mark_breakpoint_loc ~set loc e1 || mark_breakpoint_loc ~set loc e2
-      | MkNot e -> mark_breakpoint_loc ~set loc e
+      | MkUnary (_, e) -> mark_breakpoint_loc ~set loc e
       | MkIf (e1, e2, e3) ->
         mark_breakpoint_loc ~set loc e1
         || mark_breakpoint_loc ~set loc e2

@@ -27,6 +27,8 @@ val show_anns : bool ref
     false. *)
 val without_showing_anns : (unit -> 'a) -> 'a
 
+type unOp = UNot [@@deriving sexp_of]
+
 type binOp =
   | IAdd
   | IMul
@@ -46,7 +48,7 @@ and expr' =
   | MkBool of bool
   | MkUnit
   | MkBinOp of expr * binOp * expr
-  | MkNot of expr
+  | MkUnary of unOp * expr
   | MkIf of expr * expr * expr
   | MkVar of Var.t
   | MkLet of Var.t * expr * expr

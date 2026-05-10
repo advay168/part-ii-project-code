@@ -42,7 +42,7 @@ let%expect_test "Test bools" =
   test_string "true || false";
   [%expect "(MkBinOp (MkBool true) BOr (MkBool false)) --> true"];
   test_string "~true";
-  [%expect "(MkNot (MkBool true)) --> false"];
+  [%expect "(MkUnary UNot (MkBool true)) --> false"];
   test_string "if true then 1 else 2 end";
   [%expect "(MkIf (MkBool true) (MkInt 1) (MkInt 2)) --> 1"];
   test_string "if false then 1 else 2 end";
@@ -63,7 +63,8 @@ let%expect_test "Bool operation precedence" =
     "(MkBinOp (MkBool true) BOr (MkBinOp (MkBool true) BAnd (MkBool true))) \
      --> true"];
   test_string "~true && true";
-  [%expect "(MkBinOp (MkNot (MkBool true)) BAnd (MkBool true)) --> false"];
+  [%expect
+    "(MkBinOp (MkUnary UNot (MkBool true)) BAnd (MkBool true)) --> false"];
   test_string "1 = 1 && true";
   [%expect
     {| (MkBinOp (MkBinOp (MkInt 1) IEql (MkInt 1)) BAnd (MkBool true)) --> true |}]
