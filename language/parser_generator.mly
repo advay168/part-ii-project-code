@@ -71,7 +71,7 @@ expr:
       { make $loc (MkBinOp (e1, BAnd, e2)) }
 
   | BNOT; e = expr
-      { make $loc (MkNot e) }
+      { make $loc (MkUnary (UNot, e)) }
 
   | e1 = expr; EQUALS; e2 = expr
       { make $loc (MkBinOp (e1, IEql, e2)) }

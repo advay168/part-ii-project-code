@@ -144,7 +144,7 @@ and Eval : sig
   type kontinuation = kontinuation' Ast.annotated
 
   and kontinuation' =
-    | CNot of hole
+    | CUnary of Ast.unOp * hole
     | CBinOp1 of hole * Ast.binOp * Ast.expr * env
     | CBinOp2 of Value.t * Ast.binOp * hole
     | CIf of hole * Ast.expr * Ast.expr * env
@@ -201,7 +201,7 @@ end = struct
   type kontinuation = kontinuation' Ast.annotated
 
   and kontinuation' =
-    | CNot of hole
+    | CUnary of Ast.unOp * hole
     | CBinOp1 of hole * Ast.binOp * Ast.expr * env
     | CBinOp2 of Value.t * Ast.binOp * hole
     | CIf of hole * Ast.expr * Ast.expr * env
@@ -251,7 +251,7 @@ end = struct
     let continue value (c : kontinuation) cs =
       let mk k = { c with x = k; breakpoint = false } in
       match c.x with
-      | CNot Hole ->
+      | CUnary (UNot, Hole) ->
         { c = CtrlValue (Value.of_bool (not (Value.to_bool value)))
         ; e = env
         ; k = cs
@@ -360,7 +360,7 @@ end = struct
       | MkUnit -> make_ctrl_value VUnit
       | MkBinOp (expr1, op, expr2) ->
         make ~k:(CBinOp1 (Hole, op, expr2, env)) @@ CtrlExpr expr1
-      | MkNot expr -> make ~k:(CNot Hole) @@ CtrlExpr expr
+      | MkUnary (op, expr) -> make ~k:(CUnary (op, Hole)) @@ CtrlExpr expr
       | MkIf (exprCond, exprTrue, exprFalse) ->
         make ~k:(CIf (Hole, exprTrue, exprFalse, env)) @@ CtrlExpr exprCond
       | MkVar name -> make_ctrl_value (lookup name env)
@@ -500,7 +500,7 @@ end = struct
     let hole = "⬤" in
     let sprintf = Printf.sprintf in
     match k.x with
-    | CNot Hole -> sprintf "not %s" hole
+    | CUnary (UNot, Hole) -> sprintf "not %s" hole
     | CBinOp1 (Hole, EMkTuple, expr, _env) ->
       let expr = Expr.to_string expr in
       sprintf "(%s, %s)" hole expr
@@ -578,7 +578,7 @@ end = struct
   let print_cek ~source cek =
     Util.print_table
       ~header:("C", "E", "K")
-      ~width_ratio:(4, 3, 5)
+      ~width_ratio:(8, 5, 10)
       ~stringify:(stringify_cek source)
       ~starting_idx:cek.state_idx
       [ cek ]
@@ -638,7 +638,7 @@ end = struct
           let prefix, code_to_highlight, suffix =
             Ast.split_source_by_annotated source annotated
           in
-          if !Sys.interactive
+          if Unix.isatty Unix.stdout
           then begin
             let highlighted =
               Util.with_ansi
