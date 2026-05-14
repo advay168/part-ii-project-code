@@ -5,11 +5,11 @@
 (generate_opam_files true)
 
 (source
- (github advay168/part-ii-project-code))
+ (github redacted/redacted))
 
-(authors "Advay Gupta")
+(authors "redacted")
 
-(maintainers "Advay Gupta")
+(maintainers "redacted")
 
 (license LICENSE)
 
